@@ -104,6 +104,10 @@
   gap: 18px;
 }
 
+.mask-picker__grid--preview-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .mask-picker__image-wrap {
   width: fit-content;
   max-width: 100%;
@@ -128,10 +132,28 @@
   object-fit: contain;
 }
 
+.mask-picker__image-wrap .mask-picker__mask-overlay {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.55;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+.mask-picker__image-wrap .mask-picker__mask-overlay--colorized {
+  opacity: 1;
+}
+
 .mask-picker__point {
   width: 20px;
   height: 20px;
   position: absolute;
+  z-index: 2;
   border: 3px solid white;
   border-radius: 50%;
   background: #c8f36b;
@@ -142,6 +164,7 @@
 
 .mask-picker__loading {
   position: absolute;
+  z-index: 3;
   right: 12px;
   bottom: 12px;
   padding: 9px 12px;

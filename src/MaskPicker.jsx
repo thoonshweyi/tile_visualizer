@@ -1,6 +1,43 @@
 import { useEffect, useRef, useState } from 'react'
 import './MaskPicker.css'
 
+function colorizeMask(source, width, height) {
+  return new Promise((resolve, reject) => {
+    const maskImage = new Image()
+
+    maskImage.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = width || maskImage.naturalWidth
+        canvas.height = height || maskImage.naturalHeight
+        const context = canvas.getContext('2d', { willReadFrequently: true })
+
+        context.drawImage(maskImage, 0, 0, canvas.width, canvas.height)
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+
+        for (let index = 0; index < imageData.data.length; index += 4) {
+          const isSelected = imageData.data[index] > 127
+          imageData.data[index] = 0
+          imageData.data[index + 1] = 120
+          imageData.data[index + 2] = 255
+          imageData.data[index + 3] = isSelected ? 105 : 0
+        }
+
+        context.putImageData(imageData, 0, 0)
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob)
+          else reject(new Error('Mask overlay ကိုပြောင်း၍မရပါ။'))
+        }, 'image/png')
+      } catch (error) {
+        reject(error)
+      }
+    }
+
+    maskImage.onerror = () => reject(new Error('Mask image ကိုဖွင့်၍မရပါ။'))
+    maskImage.src = source
+  })
+}
+
 /**
  * Upload an image, choose a point and send it to a FastAPI mask endpoint.
  *
@@ -91,9 +128,24 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
       if (contentType.includes('application/json')) {
         const data = await response.json()
         const imageUrl = data.mask_url || data.image_url || data.url
-        nextResult = imageUrl
-          ? { type: 'image', url: imageUrl, data }
-          : { type: 'json', data }
+
+        if (data.mask) {
+          const maskSource = data.mask.startsWith('data:')
+            ? data.mask
+            : `data:image/png;base64,${data.mask}`
+          const overlayBlob = await colorizeMask(
+            maskSource,
+            data.image_width,
+            data.image_height,
+          )
+          const overlayUrl = URL.createObjectURL(overlayBlob)
+          resultUrlRef.current = overlayUrl
+          nextResult = { type: 'image', url: overlayUrl, data, colorized: true }
+        } else {
+          nextResult = imageUrl
+            ? { type: 'image', url: imageUrl, data }
+            : { type: 'json', data }
+        }
       } else {
         const blob = await response.blob()
         const url = URL.createObjectURL(blob)
@@ -183,7 +235,7 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
           <small>JPG, PNG သို့မဟုတ် WEBP</small>
         </label>
       ) : (
-        <div className="mask-picker__grid">
+        <div className={`mask-picker__grid ${result?.type === 'json' ? '' : 'mask-picker__grid--preview-only'}`}>
           <div>
             <div
               className="mask-picker__image-wrap"
@@ -194,6 +246,14 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
               aria-label="Select a point on the image"
             >
               <img ref={imageRef} src={previewUrl} alt="Uploaded preview" />
+              {result?.type === 'image' && (
+                <img
+                  className={`mask-picker__mask-overlay ${result.colorized ? 'mask-picker__mask-overlay--colorized' : ''}`}
+                  src={result.url}
+                  alt=""
+                  aria-hidden="true"
+                />
+              )}
               {point && (
                 <span
                   className="mask-picker__point"
@@ -212,18 +272,12 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
             {error && <p className="mask-picker__error" role="alert">{error}</p>}
           </div>
 
-          <div className="mask-picker__result">
-            <p>Mask result</p>
-            {result?.type === 'image' ? (
-              <img src={result.url} alt="Generated mask" />
-            ) : result?.type === 'json' ? (
+          {result?.type === 'json' && (
+            <div className="mask-picker__result">
+              <p>Mask result</p>
               <pre>{JSON.stringify(result.data, null, 2)}</pre>
-            ) : (
-              <div className="mask-picker__result-empty">
-                {status === 'loading' ? 'Processing…' : 'Result ကို ဒီနေရာမှာ ပြပါမယ်။'}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </section>
