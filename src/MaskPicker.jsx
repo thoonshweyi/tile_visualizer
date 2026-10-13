@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import './MaskPicker.css'
 
+function loadImage(source) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Image ကိုဖွင့်၍မရပါ။'))
+    image.src = source
+  })
+}
+
 function colorizeMask(source, width, height) {
   return new Promise((resolve, reject) => {
     const maskImage = new Image()
@@ -49,6 +58,8 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
   const requestRef = useRef(null)
   const previewUrlRef = useRef(null)
   const resultUrlRef = useRef(null)
+  const tileUrlRef = useRef(null)
+  const tileCanvasRef = useRef(null)
 
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
@@ -56,6 +67,8 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
+  const [tileFile, setTileFile] = useState(null)
+  const [tileUrl, setTileUrl] = useState('')
 
   const revokeResultUrl = () => {
     if (resultUrlRef.current) {
@@ -68,7 +81,87 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
     requestRef.current?.abort()
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     if (resultUrlRef.current) URL.revokeObjectURL(resultUrlRef.current)
+    if (tileUrlRef.current) URL.revokeObjectURL(tileUrlRef.current)
   }, [])
+
+  useEffect(() => {
+    const canvas = tileCanvasRef.current
+    if (!canvas) return undefined
+
+    const context = canvas.getContext('2d')
+    const maskSource = result?.maskSource
+    if (!tileUrl || !maskSource || !imageRef.current) {
+      context.clearRect(0, 0, canvas.width, canvas.height)
+      return undefined
+    }
+
+    let cancelled = false
+
+    async function drawTilePattern() {
+      try {
+        const [tileImage, maskImage] = await Promise.all([
+          loadImage(tileUrl),
+          loadImage(maskSource),
+        ])
+        if (cancelled) return
+
+        const width = imageRef.current.naturalWidth
+        const height = imageRef.current.naturalHeight
+        canvas.width = width
+        canvas.height = height
+
+        // Tile ကိုအရွယ်သေးအောင်ညှိပြီး canvas အပြည့် repeat လုပ်မယ်။
+        const tileCell = document.createElement('canvas')
+        const tileSize = 120
+        const tileRatio = tileImage.naturalWidth / tileImage.naturalHeight
+        tileCell.width = tileSize
+        tileCell.height = Math.round(tileSize / tileRatio)
+        tileCell.getContext('2d').drawImage(
+          tileImage,
+          0,
+          0,
+          tileCell.width,
+          tileCell.height,
+        )
+
+        context.globalCompositeOperation = 'source-over'
+        context.clearRect(0, 0, width, height)
+        context.fillStyle = context.createPattern(tileCell, 'repeat')
+        context.fillRect(0, 0, width, height)
+
+        // Black/white AI mask ကို alpha mask အဖြစ်ပြောင်းမယ်။
+        const maskCanvas = document.createElement('canvas')
+        maskCanvas.width = width
+        maskCanvas.height = height
+        const maskContext = maskCanvas.getContext('2d', {
+          willReadFrequently: true,
+        })
+        maskContext.drawImage(maskImage, 0, 0, width, height)
+
+        const pixels = maskContext.getImageData(0, 0, width, height)
+        for (let index = 0; index < pixels.data.length; index += 4) {
+          const isInsideMask = pixels.data[index] > 127
+          pixels.data[index] = 255
+          pixels.data[index + 1] = 255
+          pixels.data[index + 2] = 255
+          pixels.data[index + 3] = isInsideMask ? 255 : 0
+        }
+        maskContext.putImageData(pixels, 0, 0)
+
+        // Mask အတွင်းမှာပဲ tile pattern ကိုချန်ထားမယ်။
+        context.globalCompositeOperation = 'destination-in'
+        context.drawImage(maskCanvas, 0, 0)
+        context.globalCompositeOperation = 'source-over'
+      } catch (tileError) {
+        if (!cancelled) setError(tileError.message)
+      }
+    }
+
+    drawTilePattern()
+    return () => {
+      cancelled = true
+    }
+  }, [result, tileUrl])
 
   const handleFileChange = (event) => {
     const nextFile = event.target.files?.[0]
@@ -140,17 +233,23 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
           )
           const overlayUrl = URL.createObjectURL(overlayBlob)
           resultUrlRef.current = overlayUrl
-          nextResult = { type: 'image', url: overlayUrl, data, colorized: true }
+          nextResult = {
+            type: 'image',
+            url: overlayUrl,
+            data,
+            colorized: true,
+            maskSource,
+          }
         } else {
           nextResult = imageUrl
-            ? { type: 'image', url: imageUrl, data }
+            ? { type: 'image', url: imageUrl, data, maskSource: imageUrl }
             : { type: 'json', data }
         }
       } else {
         const blob = await response.blob()
         const url = URL.createObjectURL(blob)
         resultUrlRef.current = url
-        nextResult = { type: 'image', url, blob }
+        nextResult = { type: 'image', url, blob, maskSource: url }
       }
 
       setResult(nextResult)
@@ -212,6 +311,19 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
     selectPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)
   }
 
+  const handleTileChange = (event) => {
+    const nextTile = event.target.files?.[0]
+    if (!nextTile) return
+
+    if (tileUrlRef.current) URL.revokeObjectURL(tileUrlRef.current)
+    const nextTileUrl = URL.createObjectURL(nextTile)
+    tileUrlRef.current = nextTileUrl
+    setTileFile(nextTile)
+    setTileUrl(nextTileUrl)
+    setError('')
+    event.target.value = ''
+  }
+
   return (
     <section className="mask-picker">
       <div className="mask-picker__heading">
@@ -246,7 +358,7 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
               aria-label="Select a point on the image"
             >
               <img ref={imageRef} src={previewUrl} alt="Uploaded preview" />
-              {result?.type === 'image' && (
+              {result?.type === 'image' && !tileUrl && (
                 <img
                   className={`mask-picker__mask-overlay ${result.colorized ? 'mask-picker__mask-overlay--colorized' : ''}`}
                   src={result.url}
@@ -254,6 +366,11 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
                   aria-hidden="true"
                 />
               )}
+              <canvas
+                ref={tileCanvasRef}
+                className="mask-picker__tile-pattern"
+                aria-hidden="true"
+              />
               {point && (
                 <span
                   className="mask-picker__point"
@@ -270,6 +387,18 @@ function MaskPicker({ apiUrl = '/api/mask', onMaskCreated }) {
               <span>{point ? `x: ${point.x}, y: ${point.y}` : 'ပုံပေါ်တွင် နှိပ်ပါ'}</span>
             </div>
             {error && <p className="mask-picker__error" role="alert">{error}</p>}
+            {result?.maskSource && (
+              <div className="mask-picker__tile-control">
+                <div>
+                  <strong>Tile pattern</strong>
+                  <span>{tileFile ? tileFile.name : 'Tile image တစ်ပုံရွေးပါ'}</span>
+                </div>
+                <label className="mask-picker__tile-upload">
+                  <input type="file" accept="image/*" onChange={handleTileChange} />
+                  {tileFile ? 'Tile ပြောင်းရန်' : 'Tile ရွေးရန်'}
+                </label>
+              </div>
+            )}
           </div>
 
           {result?.type === 'json' && (
