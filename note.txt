@@ -1,3 +1,27 @@
 =>Install Tailwind
 
-npm install -D tailwindcss postcss autoprefixer
+လိုအပ်သော Package များကို Install လုပ်ပါTerminal ထဲတွင် အောက်ပါ Command ကို Run ပြီး Tailwind v4 နှင့် official Vite plugin ကို ထည့်သွင်းပါ:   Bashnpm install tailwindcss @tailwindcss/vite
+စစ်ဆေးရန်: package.json ထဲတွင် tailwindcss နှင့် @tailwindcss/vite တို့ ထည့်သွင်းပြီးဖြစ်ကြောင်း အတည်ပြုပါ။vite.config.ts ကို ပြင်ဆင်ပါသင့် Project ထဲရှိ vite.config.ts ဖိုင်ကိုဖွင့်ပြီး @tailwindcss/vite plugin ကို ထည့်သွင်းပေးပါ:   TypeScriptimport { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(),
+  ],
+})
+စစ်ဆေးရန်: Development Server ကို npm run dev ပြန်လုပ်ကြည့်တဲ့အခါ Error တစ်စုံတစ်ရာ မတက်တော့ဘဲ အလုပ်လုပ်ကြောင်း စစ်ဆေးပါ။CSS ဖိုင်တွင် Tailwind ကို Import လုပ်ပါsrc/index.css ဖိုင်ကိုဖွင့်ပြီး အရင်သုံးနေကျ @tailwind directives သုံးကြောင်းအစား အောက်ပါ တစ်ကြောင်းတည်းဖြင့် ပြောင်းလဲရေးသားပါ:   CSS@import "tailwindcss";
+စစ်ဆေးရန်: Browser တွင် Utility Classes များ ပုံမှန် အလုပ်လုပ်နေခြင်း ရှိမရှိ အတည်ပြုပါ။
+
+5.Tailwind အလုပ်လုပ်ခြင်း ရှိမရှိ စမ်းသပ်ပါ:src/App.jsx ဖိုင်ကိုဖွင့်ပြီး Tailwind Classes များကို အသုံးပြု၍ စမ်းသပ်ရေးသားပါ။JavaScriptfunction App() {
+  return (
+    <div className="flex items-center justify-center h-screen bg-blue-100">
+      <h1 className="text-4xl font-bold text-blue-600 underline">
+        Tailwind CSS in React!
+      </h1>
+    </div>
+  )
+}
+
+export default App
