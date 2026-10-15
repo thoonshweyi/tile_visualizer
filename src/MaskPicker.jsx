@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import cvModule from '@techstark/opencv-js'
-import './MaskPicker.css'
 
 let openCvPromise
 

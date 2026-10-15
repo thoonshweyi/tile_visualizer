@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import cvModule from '@techstark/opencv-js'
-import './TileVisualizer.css'
 
 import diningRoom from './assets/img/rooms/samplediningroom2.png'
 import diningRoomWide from './assets/img/rooms/samplediningroom.png'
