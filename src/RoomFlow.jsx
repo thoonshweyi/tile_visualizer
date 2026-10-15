@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import diningRoom from './assets/img/rooms/samplediningroom2.png'
 import diningRoomWide from './assets/img/rooms/samplediningroom.png'
@@ -52,6 +52,7 @@ function Icon({ name, size = 19 }) {
     grid: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M12 4v16M4 12h16" /></>,
     adjust: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>,
     search: <><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></>,
+    upload: <><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" /><path d="M5 14v5h14v-5" /></>,
   }
 
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
@@ -70,10 +71,26 @@ function Brand() {
 }
 
 function RoomLibrary({ onContinue }) {
+  const uploadRef = useRef(null)
+  const uploadedUrlRef = useRef(null)
   const [category, setCategory] = useState('All')
-  const [selectedRoom, setSelectedRoom] = useState(ROOMS[0])
+  const [selectedRoom, setSelectedRoom] = useState(null)
   const categories = ['All', 'Living', 'Bedroom', 'Kitchen', 'Dining']
   const visibleRooms = category === 'All' ? ROOMS : ROOMS.filter((room) => room.category === category)
+
+  useEffect(() => () => {
+    if (uploadedUrlRef.current) URL.revokeObjectURL(uploadedUrlRef.current)
+  }, [])
+
+  const handleUpload = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (uploadedUrlRef.current) URL.revokeObjectURL(uploadedUrlRef.current)
+    const src = URL.createObjectURL(file)
+    uploadedUrlRef.current = src
+    setSelectedRoom({ id: 'uploaded-room', name: file.name, category: 'Your upload', src, uploaded: true })
+    event.target.value = ''
+  }
 
   return (
     <div className="min-h-screen bg-[#f7f7f7] font-sans text-[#242424]">
@@ -83,23 +100,40 @@ function RoomLibrary({ onContinue }) {
         <button className="justify-self-end rounded-full bg-[#f1f1f1] px-4 py-2 text-xs text-[#666]">Exit</button>
       </header>
 
-      <main className="grid min-h-[calc(100vh-72px)] grid-cols-[340px_minmax(0,1fr)] max-lg:grid-cols-[290px_minmax(0,1fr)] max-md:block">
-        <aside className="border-r border-[#e4e4e4] bg-white p-8 max-md:border-r-0 max-md:border-b">
-          <p className="text-[10px] font-extrabold tracking-[0.18em] text-[#ef4444]">START YOUR PROJECT</p>
-          <h1 className="mt-3 text-4xl font-bold leading-[1.05] tracking-[-0.05em]">Make the space yours.</h1>
-          <p className="mt-4 text-sm leading-6 text-[#767676]">Select a room to preview the visualizer workflow.</p>
-          <div className="mt-7 overflow-hidden rounded-2xl border border-[#dedede] bg-white shadow-[0_16px_40px_rgba(0,0,0,0.08)]">
-            <div className="relative aspect-[4/3] overflow-hidden bg-[#eee]"><img className="h-full w-full object-cover" src={selectedRoom.src} alt={selectedRoom.name} /><span className="absolute left-3 top-3 rounded-full bg-[#222]/80 px-3 py-1.5 text-[9px] text-white">Selected room</span></div>
-            <div className="px-4 py-3"><small className="text-[9px] text-[#999]">{selectedRoom.category}</small><strong className="mt-1 block text-xs">{selectedRoom.name}</strong></div>
-            <button onClick={() => onContinue(selectedRoom)} className="mx-3 mb-3 flex h-11 w-[calc(100%-24px)] items-center justify-center gap-2 rounded-xl bg-[#ef4444] text-xs font-bold text-white transition hover:bg-[#dc3838]">Open workspace <Icon name="arrow" size={16} /></button>
+      <main className="grid min-h-[calc(100vh-72px)] grid-cols-[minmax(320px,380px)_minmax(0,1fr)] max-lg:grid-cols-[320px_minmax(0,1fr)] max-md:block">
+        <aside className="border-r border-[#e4e4e4] bg-[#fcfcfc] px-8 py-10 max-md:border-r-0 max-md:border-b">
+          <p className="text-[9px] font-extrabold tracking-[0.18em] text-[#ef4444]">START YOUR PROJECT</p>
+          <h1 className="mt-3 max-w-[300px] text-[38px] font-bold leading-[1.05] tracking-[-0.055em]">{selectedRoom ? 'Review your room' : 'Make the space yours.'}</h1>
+          <p className="mt-4 max-w-[305px] text-[12px] leading-5 text-[#777]">{selectedRoom ? 'Check the room before opening your workspace.' : 'Upload your own photo or begin with one of our ready-made spaces.'}</p>
+
+          {selectedRoom ? (
+            <div className="mt-7 overflow-hidden rounded-2xl border border-[#dedede] bg-white shadow-[0_16px_40px_rgba(0,0,0,0.08)]">
+              <div className="relative aspect-[1.48] overflow-hidden bg-[#eee]"><img className="h-full w-full object-cover" src={selectedRoom.src} alt={selectedRoom.name} /><span className="absolute left-3 top-3 rounded-full bg-[#222]/80 px-3 py-1.5 text-[8px] text-white">{selectedRoom.uploaded ? 'Your upload' : 'Selected room'}</span></div>
+              <div className="flex items-center justify-between gap-3 px-4 py-3"><span className="min-w-0"><small className="block text-[8px] text-[#999]">Selected room</small><strong className="mt-1 block truncate text-[11px]">{selectedRoom.name}</strong></span><button onClick={() => setSelectedRoom(null)} className="text-[9px] text-[#777]">Change</button></div>
+              <button onClick={() => onContinue(selectedRoom)} className="mx-3 mb-3 flex h-11 w-[calc(100%-24px)] items-center justify-center gap-2 rounded-xl bg-[#ef4444] text-[10px] font-bold text-white transition hover:bg-[#dc3838]">Continue to workspace <Icon name="arrow" size={15} /></button>
+            </div>
+          ) : (
+            <button onClick={() => uploadRef.current?.click()} className="mt-7 flex min-h-[300px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-[#cfd1d2] bg-white px-8 text-center transition hover:border-[#ef4444] hover:bg-[#fffafa]">
+              <span className="grid size-14 place-items-center rounded-2xl bg-[#fff0ef] text-[#ef4444]"><Icon name="upload" size={25} /></span>
+              <strong className="mt-5 text-xs">Upload your room</strong>
+              <span className="mt-2 text-[9px] text-[#888]">Choose a clear JPG, PNG or WEBP image</span>
+              <span className="mt-5 flex items-center gap-2 rounded-lg bg-[#ef4444] px-5 py-3 text-[9px] font-bold text-white"><Icon name="upload" size={14} /> Browse image</span>
+            </button>
+          )}
+
+          <input ref={uploadRef} type="file" accept="image/*" onChange={handleUpload} className="sr-only" />
+
+          <div className="mt-6 border-t border-[#e2e2e2] pt-5">
+            <strong className="text-[9px] uppercase tracking-[0.1em]">For the best result</strong>
+            <ul className="mt-3 space-y-2 text-[9px] text-[#777]"><li><span className="mr-2 text-[#ef4444]">●</span>Use a bright, clear room photo</li><li><span className="mr-2 text-[#ef4444]">●</span>Keep walls and floors visible</li><li><span className="mr-2 text-[#ef4444]">●</span>Avoid heavily cropped images</li></ul>
           </div>
         </aside>
 
-        <section className="min-w-0 p-10 max-md:p-5">
-          <div className="flex items-end justify-between gap-4"><div><p className="text-[10px] font-extrabold tracking-[0.18em] text-[#ef4444]">ROOM LIBRARY</p><h2 className="mt-2 text-2xl font-bold tracking-[-0.04em]">Choose a styled space</h2></div><span className="text-xs text-[#888]">{visibleRooms.length} rooms</span></div>
+        <section className="min-w-0 bg-white px-10 py-10 max-md:p-5">
+          <div className="flex items-end justify-between gap-4"><div><p className="text-[9px] font-extrabold tracking-[0.18em] text-[#ef4444]">READY-MADE ROOMS</p><h2 className="mt-3 text-[25px] font-bold tracking-[-0.04em]">Or start with a styled space</h2></div><span className="text-[9px] text-[#888]">{visibleRooms.length} rooms</span></div>
           <div className="my-6 flex gap-2 overflow-x-auto">{categories.map((item) => <button key={item} onClick={() => setCategory(item)} className={`rounded-full px-4 py-2 text-[11px] ${category === item ? 'bg-[#242424] text-white' : 'border border-[#ddd] bg-white text-[#666]'}`}>{item}</button>)}</div>
-          <div className="grid grid-cols-3 gap-x-5 gap-y-7 max-xl:grid-cols-2 max-sm:grid-cols-1">
-            {visibleRooms.map((room) => <button key={room.id} onClick={() => setSelectedRoom(room)} className={`group overflow-hidden rounded-xl border bg-white p-2 text-left transition ${selectedRoom.id === room.id ? 'border-[#ef4444] ring-2 ring-[#ef4444]/10' : 'border-[#e1e1e1] hover:border-[#aaa]'}`}><span className="relative block aspect-[3/2] overflow-hidden rounded-lg"><img src={room.src} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />{selectedRoom.id === room.id && <span className="absolute right-2 top-2 rounded-full bg-[#ef4444] px-2 py-1 text-[8px] font-bold text-white">SELECTED</span>}</span><span className="block px-2 py-3"><strong className="block text-xs">{room.name}</strong><small className="mt-1 block text-[10px] text-[#888]">{room.category}</small></span></button>)}
+          <div className="grid grid-cols-3 gap-x-5 gap-y-7 max-xl:grid-cols-2 max-lg:grid-cols-1">
+            {visibleRooms.map((room) => <button key={room.id} onClick={() => setSelectedRoom(room)} className={`group overflow-hidden rounded-xl border bg-white p-2 text-left transition ${selectedRoom?.id === room.id ? 'border-[#bfc1c2] shadow-[0_10px_28px_rgba(0,0,0,.09)]' : 'border-[#e1e1e1] hover:border-[#aaa]'}`}><span className="relative block aspect-[3/2] overflow-hidden rounded-lg"><img src={room.src} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />{selectedRoom?.id === room.id && <span className="absolute right-2 top-2 rounded-full bg-[#242424]/90 px-2 py-1 text-[8px] font-bold text-white">SELECTED</span>}</span><span className="block px-2 py-3"><strong className="block text-xs">{room.name}</strong><small className="mt-1 block text-[10px] text-[#888]">{room.category}</small></span></button>)}
           </div>
         </section>
       </main>
@@ -114,10 +148,11 @@ function ActivityButton({ active, icon, label, onClick }) {
 function PointsPanel({ activeSurface, setActiveSurface }) {
   return (
     <aside className="flex h-full min-h-0 flex-col border-r border-[#dfdfdf] bg-white">
-      <div className="flex h-[66px] items-center justify-between border-b border-[#e5e5e5] px-5"><div><p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#ef4444]">Point workspace</p><h2 className="mt-1 text-sm font-bold">Surfaces & points</h2></div><button className="rounded-full border border-[#ef4444] px-3 py-1.5 text-[9px] font-semibold text-[#ef4444]">Adjust points</button></div>
+      <div className="flex min-h-[72px] items-center justify-between gap-3 border-b border-[#e5e5e5] px-4"><div><p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#ef4444]">Point workspace</p><h2 className="mt-1 text-sm font-bold">Surfaces & points</h2></div><button className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#ef4444] px-3 py-2 text-[9px] font-semibold text-[#ef4444] transition hover:bg-[#ef4444] hover:text-white"><Icon name="points" size={14} /> Add points</button></div>
       <div className="grid grid-cols-3 gap-1 border-b border-[#e8e8e8] p-3"><button className="rounded-lg bg-[#ef4444] py-2 text-[10px] font-semibold text-white">All</button><button className="flex items-center justify-center gap-1 rounded-lg py-2 text-[10px] text-[#777]"><Icon name="grid" size={14} /> Floor</button><button className="flex items-center justify-center gap-1 rounded-lg py-2 text-[10px] text-[#777]"><Icon name="wall" size={14} /> Wall</button></div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {SURFACES.map((surface) => <button key={surface.id} onClick={() => setActiveSurface(surface.id)} className={`grid w-full grid-cols-[45px_1fr_auto] items-center gap-3 border-b border-[#ededed] p-3 text-left ${activeSurface === surface.id ? 'bg-[#fff0ef]' : 'hover:bg-[#fafafa]'}`}><span className="grid size-11 place-items-center bg-[linear-gradient(45deg,#d8dade_25%,transparent_25%),linear-gradient(-45deg,#d8dade_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#d8dade_75%),linear-gradient(-45deg,transparent_75%,#d8dade_75%)] bg-[length:12px_12px] bg-[position:0_0,0_6px,6px_-6px,-6px_0] text-[#555]"><Icon name={surface.type === 'Wall' ? 'wall' : 'grid'} size={17} /></span><span><strong className="block text-[11px]">{surface.name}</strong><small className="mt-1 block text-[9px] text-[#999]">4 points</small></span><span className={`rounded-full px-2 py-1 text-[8px] font-bold ${activeSurface === surface.id ? 'bg-[#ef4444]' : 'bg-[#242424]'} text-white`}>Open</span></button>)}
+        <button className="m-3 flex w-[calc(100%-24px)] items-center justify-center gap-2 rounded-xl border border-dashed border-[#ef4444] bg-[#fff8f7] py-3 text-[9px] font-bold text-[#ef4444] transition hover:bg-[#fff0ef]"><Icon name="plus" size={15} /> Add another point area</button>
       </div>
       <div className="m-4 rounded-xl bg-[#f5f5f5] p-3 text-[10px] leading-4 text-[#777]"><strong className="text-[#333]">Point mode</strong><br />Select a surface to view and manage its points.</div>
     </aside>
@@ -152,7 +187,7 @@ function Workspace({ room, onChangeRoom }) {
         <div className="min-h-0 max-md:absolute max-md:bottom-[58px] max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel activeSurface={activeSurface} setActiveSurface={setActiveSurface} /> : <ProductsPanel selectedProduct={selectedProduct} setSelectedProduct={setSelectedProduct} />}</div>
         <section className="relative flex min-h-0 min-w-0 flex-col bg-[#f3f4f5] bg-[radial-gradient(#d0d0d0_0.7px,transparent_0.7px)] bg-[length:7px_7px]">
           <div className="flex h-10 shrink-0 items-center justify-between px-5 text-[9px] text-[#888]"><span>Workspace / <strong className="text-[#333]">{room.name}</strong></span><span className="rounded-full bg-white px-3 py-1 shadow-sm">{panel === 'points' ? 'Point workspace' : 'Product workspace'}</span></div>
-          <div className="flex min-h-0 flex-1 items-center justify-center px-5 pb-5"><div className="relative max-h-full w-full max-w-[1180px] overflow-hidden rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)]"><img src={room.src} alt={room.name} className="block max-h-[calc(100vh-190px)] w-full object-cover" />{panel === 'points' && <><svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1000 650" preserveAspectRatio="none"><polygon points="210,145 715,135 735,515 195,525" fill="rgba(239,68,68,.08)" stroke="#ef4444" strokeWidth="2" strokeDasharray="8 8" vectorEffect="non-scaling-stroke" /></svg>{[[21,22],[71.5,21],[73.5,79],[19.5,81]].map(([x,y], index) => <span key={index} style={{ left: `${x}%`, top: `${y}%` }} className="absolute grid size-7 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-[3px] border-white bg-[#ef4444] text-[9px] font-bold text-white shadow-[0_3px_12px_rgba(0,0,0,.35)]">{index + 1}</span>)}<span className="absolute left-1/2 top-1/2 -translate-x-1/2 rounded-full bg-[#ef4444] px-3 py-1.5 text-[9px] font-bold text-white shadow">Wall {activeSurface.toString().padStart(2, '0')}</span></>}{panel === 'products' && <div className="absolute bottom-4 left-4 flex items-center gap-3 rounded-xl bg-white/95 p-2 pr-4 shadow-lg backdrop-blur"><img src={selectedProduct.src} alt="" className="size-11 rounded-lg object-cover" /><span><small className="block text-[8px] text-[#888]">Selected product</small><strong className="mt-0.5 block text-[10px] uppercase">{selectedProduct.name}</strong></span></div>}</div></div>
+          <div className="flex min-h-0 flex-1 items-center justify-center px-5 pb-5"><div className="relative max-h-full w-full max-w-[1180px] overflow-hidden rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)]"><img src={room.src} alt={room.name} className="block max-h-[calc(100vh-190px)] w-full object-cover" />{panel === 'products' && <div className="absolute bottom-4 left-4 flex items-center gap-3 rounded-xl bg-white/95 p-2 pr-4 shadow-lg backdrop-blur"><img src={selectedProduct.src} alt="" className="size-11 rounded-lg object-cover" /><span><small className="block text-[8px] text-[#888]">Selected product</small><strong className="mt-0.5 block text-[10px] uppercase">{selectedProduct.name}</strong></span></div>}</div></div>
         </section>
       </main>
 
