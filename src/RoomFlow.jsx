@@ -33,15 +33,15 @@ const PRODUCTS = [
 
 const normalizeAreaName = (name) => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
 
-function colorizeMask(source, width, height) {
+function colorizeMask(source) {
   return new Promise((resolve, reject) => {
     const maskImage = new Image()
 
     maskImage.onload = () => {
       try {
         const canvas = document.createElement('canvas')
-        canvas.width = width || maskImage.naturalWidth
-        canvas.height = height || maskImage.naturalHeight
+        canvas.width = maskImage.naturalWidth
+        canvas.height = maskImage.naturalHeight
         const context = canvas.getContext('2d', { willReadFrequently: true })
 
         context.drawImage(maskImage, 0, 0, canvas.width, canvas.height)
@@ -315,6 +315,7 @@ function Workspace({ room, onChangeRoom }) {
   const [areas, setAreas] = useState([])
   const [activeAreaId, setActiveAreaId] = useState(null)
   const [maskStates, setMaskStates] = useState({})
+  const [roomImageSize, setRoomImageSize] = useState({ width: 3, height: 2 })
   const [isAddingArea, setIsAddingArea] = useState(false)
   const [pendingArea, setPendingArea] = useState(null)
   const [draftName, setDraftName] = useState('Area 01')
@@ -404,7 +405,7 @@ function Workspace({ room, onChangeRoom }) {
         if (!maskSource) throw new Error('Mask API did not return a mask image.')
 
         try {
-          const overlayBlob = await colorizeMask(maskSource, data.image_width, data.image_height)
+          const overlayBlob = await colorizeMask(maskSource)
           overlayUrl = trackMaskUrl(overlayBlob)
         } catch (overlayError) {
           if (!imageUrl) throw overlayError
@@ -414,7 +415,7 @@ function Workspace({ room, onChangeRoom }) {
         const maskBlob = await response.blob()
         const rawMaskUrl = trackMaskUrl(maskBlob)
         try {
-          const overlayBlob = await colorizeMask(rawMaskUrl, image.naturalWidth, image.naturalHeight)
+          const overlayBlob = await colorizeMask(rawMaskUrl)
           overlayUrl = trackMaskUrl(overlayBlob)
           URL.revokeObjectURL(rawMaskUrl)
           maskObjectUrlsRef.current.delete(rawMaskUrl)
@@ -467,7 +468,15 @@ function Workspace({ room, onChangeRoom }) {
 
   const handleRoomClick = (event) => {
     if (!isAddingArea) return
-    const bounds = event.currentTarget.getBoundingClientRect()
+    const image = roomImageRef.current
+    if (!image) return
+    const bounds = image.getBoundingClientRect()
+    if (
+      event.clientX < bounds.left
+      || event.clientX > bounds.right
+      || event.clientY < bounds.top
+      || event.clientY > bounds.bottom
+    ) return
     const x = ((event.clientX - bounds.left) / bounds.width) * 100
     const y = ((event.clientY - bounds.top) / bounds.height) * 100
     setPendingArea({ x, y })
@@ -491,6 +500,11 @@ function Workspace({ room, onChangeRoom }) {
 
   const activeArea = areas.find((area) => area.id === activeAreaId) ?? null
   const activeMaskState = activeArea ? maskStates[activeArea.id] : null
+  const roomAspectRatio = roomImageSize.width / roomImageSize.height
+  const roomFrameStyle = {
+    aspectRatio: `${roomImageSize.width} / ${roomImageSize.height}`,
+    width: `min(100%, calc((100dvh - 190px) * ${roomAspectRatio}))`,
+  }
 
   return (
     <div className="grid h-screen grid-rows-[72px_minmax(0,1fr)] overflow-hidden border-t-[5px] border-[#333] bg-[#f1f3f4] font-sans text-[#242424]">
@@ -504,12 +518,23 @@ function Workspace({ room, onChangeRoom }) {
           <div className="flex min-h-0 items-center justify-center px-5 pb-5">
             <div
               onClick={handleRoomClick}
-              className={`relative max-h-full w-full max-w-[1180px] overflow-hidden rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)] ${isAddingArea ? 'cursor-crosshair ring-2 ring-[#ef4444] ring-offset-2' : ''}`}
+              style={roomFrameStyle}
+              className={`relative max-h-full max-w-[1180px] overflow-hidden rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)] ${isAddingArea ? 'cursor-crosshair ring-2 ring-[#ef4444] ring-offset-2' : ''}`}
             >
-              <img ref={roomImageRef} src={room.src} alt={room.name} className="block max-h-[calc(100vh-190px)] w-full select-none object-cover" draggable="false" />
+              <img
+                ref={roomImageRef}
+                src={room.src}
+                alt={room.name}
+                onLoad={(event) => setRoomImageSize({
+                  width: event.currentTarget.naturalWidth,
+                  height: event.currentTarget.naturalHeight,
+                })}
+                className="absolute inset-0 block h-full w-full select-none object-contain"
+                draggable="false"
+              />
 
               {activeMaskState?.status === 'success' && (
-                <img src={activeMaskState.url} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-fill" />
+                <img src={activeMaskState.url} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-contain" />
               )}
 
               {activeMaskState?.status === 'loading' && (
