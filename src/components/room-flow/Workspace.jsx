@@ -1,0 +1,640 @@
+import { useEffect, useRef, useState } from 'react'
+
+import ActivityButton from './ActivityButton'
+import Brand from './Brand'
+import { colorizeMask, distance, getOpenCv, loadImage, normalizeAreaName, orderPoints } from './flowUtils'
+import Icon from './Icon'
+import PointsPanel from './PointsPanel'
+import ProductsPanel from './ProductsPanel'
+
+export default function Workspace({ room, onChangeRoom }) {
+  const roomImageRef = useRef(null)
+  const tileCanvasRef = useRef(null)
+  const dragPointRef = useRef(null)
+  const roomFileRef = useRef(null)
+  const maskRequestRef = useRef(null)
+  const maskObjectUrlsRef = useRef(new Set())
+  const [panel, setPanel] = useState('points')
+  const [areas, setAreas] = useState([])
+  const [activeAreaId, setActiveAreaId] = useState(null)
+  const [maskStates, setMaskStates] = useState({})
+  const [pointsByArea, setPointsByArea] = useState({})
+  const [roomImageSize, setRoomImageSize] = useState({ width: 3, height: 2 })
+  const [isAddingArea, setIsAddingArea] = useState(false)
+  const [pointMode, setPointMode] = useState(false)
+  const [pendingArea, setPendingArea] = useState(null)
+  const [draftName, setDraftName] = useState('Area 01')
+  const [draftType, setDraftType] = useState('Wall')
+  const [selectedProductsByArea, setSelectedProductsByArea] = useState({})
+  const [appliedPreviewsByArea, setAppliedPreviewsByArea] = useState({})
+  const [applyingProduct, setApplyingProduct] = useState(null)
+  const [isApplying, setIsApplying] = useState(false)
+  const [applyError, setApplyError] = useState('')
+
+  useEffect(() => () => {
+    maskRequestRef.current?.controller.abort()
+    maskObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+    if (room.workspaceObjectUrl) URL.revokeObjectURL(room.src)
+  }, [room.src, room.workspaceObjectUrl])
+
+  const getRoomFile = async () => {
+    if (room.file) return room.file
+    if (!roomFileRef.current) {
+      roomFileRef.current = fetch(room.src).then(async (response) => {
+        if (!response.ok) throw new Error('Room image could not be prepared for the mask API.')
+        const blob = await response.blob()
+        return new File([blob], `${room.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'room'}.jpg`, {
+          type: blob.type || 'image/jpeg',
+        })
+      })
+    }
+    return roomFileRef.current
+  }
+
+  const trackMaskUrl = (blob) => {
+    const url = URL.createObjectURL(blob)
+    maskObjectUrlsRef.current.add(url)
+    return url
+  }
+
+  const requestMaskForArea = async (area) => {
+    const currentRequest = maskRequestRef.current
+    if (currentRequest?.areaId === area.id) return
+    currentRequest?.controller.abort()
+    if (maskStates[area.id]?.status === 'success') return
+
+    const controller = new AbortController()
+    maskRequestRef.current = { areaId: area.id, controller }
+    setMaskStates((current) => ({
+      ...current,
+      [area.id]: { status: 'loading', url: '', error: '' },
+    }))
+
+    try {
+      const image = roomImageRef.current
+      if (!image?.naturalWidth || !image?.naturalHeight) {
+        throw new Error('Room image is not ready yet.')
+      }
+
+      const x = Math.max(0, Math.min(image.naturalWidth - 1, Math.floor((area.x / 100) * image.naturalWidth)))
+      const y = Math.max(0, Math.min(image.naturalHeight - 1, Math.floor((area.y / 100) * image.naturalHeight)))
+      const imageFile = await getRoomFile()
+      const formData = new FormData()
+      formData.append('image', imageFile)
+      formData.append('x', String(x))
+      formData.append('y', String(y))
+
+      const response = await fetch(import.meta.env.VITE_MASK_API_URL || '/api/mask', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        let message = `Mask API error (${response.status})`
+        try {
+          const body = await response.json()
+          message = body.detail || body.message || message
+        } catch {
+          // Keep the status-based error when the response is not JSON.
+        }
+        throw new Error(message)
+      }
+
+      const contentType = response.headers.get('content-type') || ''
+      let overlayUrl = ''
+      let maskSource = ''
+
+      if (contentType.includes('application/json')) {
+        const data = await response.json()
+        const imageUrl = data.mask_url || data.image_url || data.url
+        maskSource = data.mask
+          ? (data.mask.startsWith('data:') ? data.mask : `data:image/png;base64,${data.mask}`)
+          : imageUrl
+
+        if (!maskSource) throw new Error('Mask API did not return a mask image.')
+
+        try {
+          const overlayBlob = await colorizeMask(maskSource)
+          overlayUrl = trackMaskUrl(overlayBlob)
+        } catch (overlayError) {
+          if (!imageUrl) throw overlayError
+          overlayUrl = imageUrl
+        }
+      } else {
+        const maskBlob = await response.blob()
+        const rawMaskUrl = trackMaskUrl(maskBlob)
+        maskSource = rawMaskUrl
+        try {
+          const overlayBlob = await colorizeMask(rawMaskUrl)
+          overlayUrl = trackMaskUrl(overlayBlob)
+        } catch {
+          overlayUrl = rawMaskUrl
+        }
+      }
+
+      setMaskStates((current) => ({
+        ...current,
+        [area.id]: { status: 'success', url: overlayUrl, maskSource, error: '', x, y },
+      }))
+    } catch (requestError) {
+      if (requestError.name === 'AbortError') {
+        setMaskStates((current) => ({
+          ...current,
+          [area.id]: { status: 'idle', url: '', error: '' },
+        }))
+        return
+      }
+      setMaskStates((current) => ({
+        ...current,
+        [area.id]: { status: 'error', url: '', error: requestError.message || 'Mask could not be created.' },
+      }))
+    } finally {
+      if (maskRequestRef.current?.controller === controller) maskRequestRef.current = null
+    }
+  }
+
+  const clearWorkingCanvas = () => {
+    const canvas = tileCanvasRef.current
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+    setApplyError('')
+  }
+
+  const clearAreaProduct = (areaId) => {
+    if (!areaId) return
+    setSelectedProductsByArea((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
+    setAppliedPreviewsByArea((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
+  }
+
+  const getPerspectivePoint = (clientX, clientY) => {
+    const image = roomImageRef.current
+    if (!image) return null
+    const bounds = image.getBoundingClientRect()
+    if (
+      clientX < bounds.left
+      || clientX > bounds.right
+      || clientY < bounds.top
+      || clientY > bounds.bottom
+    ) return null
+
+    const left = (clientX - bounds.left) / bounds.width
+    const top = (clientY - bounds.top) / bounds.height
+    return {
+      x: Math.round(left * image.naturalWidth),
+      y: Math.round(top * image.naturalHeight),
+      left: left * 100,
+      top: top * 100,
+    }
+  }
+
+  const selectArea = (area) => {
+    clearWorkingCanvas()
+    setPointMode(false)
+    setPanel('points')
+    setActiveAreaId(area.id)
+    requestMaskForArea(area)
+  }
+
+  const startAddingPoints = (area) => {
+    const areaId = area?.id || activeAreaId
+    if (!areaId || maskStates[areaId]?.status !== 'success' || (pointsByArea[areaId] || []).length === 4) return
+    clearWorkingCanvas()
+    setActiveAreaId(areaId)
+    setPanel('points')
+    setPointMode(true)
+  }
+
+  const resetPoints = (area) => {
+    const areaId = area?.id || activeAreaId
+    if (!areaId) return
+    clearWorkingCanvas()
+    clearAreaProduct(areaId)
+    setPointsByArea((current) => ({ ...current, [areaId]: [] }))
+    if (activeAreaId === areaId) setPointMode(false)
+  }
+
+  const openProductsForArea = (area) => {
+    if (maskStates[area.id]?.status !== 'success' || (pointsByArea[area.id] || []).length !== 4) return
+    clearWorkingCanvas()
+    setActiveAreaId(area.id)
+    setPointMode(false)
+    setPanel('products')
+  }
+
+  const deleteArea = (areaId) => {
+    if (maskRequestRef.current?.areaId === areaId) {
+      maskRequestRef.current.controller.abort()
+      maskRequestRef.current = null
+    }
+    const maskState = maskStates[areaId]
+    const urlsToRelease = [maskState?.url, maskState?.maskSource]
+    urlsToRelease.forEach((url) => {
+      if (url && maskObjectUrlsRef.current.has(url)) {
+        URL.revokeObjectURL(url)
+        maskObjectUrlsRef.current.delete(url)
+      }
+    })
+    setAreas((current) => current.filter((area) => area.id !== areaId))
+    setMaskStates((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
+    setPointsByArea((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
+    clearAreaProduct(areaId)
+    if (activeAreaId === areaId) {
+      clearWorkingCanvas()
+      setActiveAreaId(null)
+      setPointMode(false)
+      setPanel('points')
+    }
+  }
+
+  const startAddingArea = () => {
+    if (areas.length >= 6) return
+    clearWorkingCanvas()
+    setPointMode(false)
+    setPanel('points')
+    setIsAddingArea(true)
+    setActiveAreaId(null)
+    setPendingArea(null)
+    setDraftName(`Area ${String(areas.length + 1).padStart(2, '0')}`)
+    setDraftType('Wall')
+  }
+
+  const cancelAddingArea = () => {
+    setIsAddingArea(false)
+    setPendingArea(null)
+  }
+
+  const handleRoomClick = (event) => {
+    if (pointMode && activeAreaId) {
+      const nextPoint = getPerspectivePoint(event.clientX, event.clientY)
+      if (!nextPoint) return
+      const currentPoints = pointsByArea[activeAreaId] || []
+      if (currentPoints.length >= 4) return
+      const nextPoints = [...currentPoints, nextPoint]
+      const completedPoints = nextPoints.length === 4 ? orderPoints(nextPoints) : nextPoints
+      setPointsByArea((current) => ({ ...current, [activeAreaId]: completedPoints }))
+      if (completedPoints.length === 4) setPointMode(false)
+      clearWorkingCanvas()
+      clearAreaProduct(activeAreaId)
+      return
+    }
+
+    if (!isAddingArea) {
+      clearWorkingCanvas()
+      setActiveAreaId(null)
+      setPointMode(false)
+      setPanel('points')
+      return
+    }
+    const image = roomImageRef.current
+    if (!image) return
+    const bounds = image.getBoundingClientRect()
+    if (
+      event.clientX < bounds.left
+      || event.clientX > bounds.right
+      || event.clientY < bounds.top
+      || event.clientY > bounds.bottom
+    ) return
+    const x = ((event.clientX - bounds.left) / bounds.width) * 100
+    const y = ((event.clientY - bounds.top) / bounds.height) * 100
+    setPendingArea({ x, y })
+  }
+
+  const handlePerspectivePointDown = (index, event) => {
+    event.stopPropagation()
+    if (!activeAreaId) return
+    clearWorkingCanvas()
+    clearAreaProduct(activeAreaId)
+    dragPointRef.current = { areaId: activeAreaId, index }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handlePerspectivePointMove = (event) => {
+    const dragging = dragPointRef.current
+    if (!dragging) return
+    event.stopPropagation()
+    const nextPoint = getPerspectivePoint(event.clientX, event.clientY)
+    if (!nextPoint) return
+    setPointsByArea((current) => ({
+      ...current,
+      [dragging.areaId]: (current[dragging.areaId] || []).map((point, index) => (
+        index === dragging.index ? nextPoint : point
+      )),
+    }))
+  }
+
+  const handlePerspectivePointUp = (event) => {
+    const dragging = dragPointRef.current
+    if (!dragging) return
+    event.stopPropagation()
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    dragPointRef.current = null
+    setPointsByArea((current) => ({
+      ...current,
+      [dragging.areaId]: (current[dragging.areaId] || []).length === 4
+        ? orderPoints(current[dragging.areaId])
+        : (current[dragging.areaId] || []),
+    }))
+  }
+
+  const saveArea = () => {
+    const duplicateName = areas.some((area) => normalizeAreaName(area.name) === normalizeAreaName(draftName))
+    if (!pendingArea || !draftName.trim() || duplicateName || areas.length >= 6) return
+    const nextArea = {
+      id: `area-${Date.now()}`,
+      name: draftName.trim(),
+      type: draftType,
+      x: pendingArea.x,
+      y: pendingArea.y,
+    }
+    setAreas((currentAreas) => [...currentAreas, nextArea])
+    setIsAddingArea(false)
+    setPendingArea(null)
+    selectArea(nextArea)
+  }
+
+  const applyProduct = async (product) => {
+    const areaId = activeAreaId
+    const points = areaId ? pointsByArea[areaId] || [] : []
+    const maskSource = areaId ? maskStates[areaId]?.maskSource : ''
+    if (!areaId || points.length !== 4 || !maskSource) {
+      setApplyError('Select an area and add four points before choosing a product.')
+      return
+    }
+
+    setApplyingProduct(product)
+    setIsApplying(true)
+    setApplyError('')
+
+    let tileMat
+    let warpedMat
+    let sourcePoints
+    let destinationPoints
+    let transform
+
+    try {
+      const [cv, tileImage, maskImage] = await Promise.all([
+        getOpenCv(),
+        loadImage(product.src),
+        loadImage(maskSource),
+      ])
+      const image = roomImageRef.current
+      const canvas = tileCanvasRef.current
+      if (!image || !canvas) throw new Error('Room preview is not ready.')
+
+      const width = image.naturalWidth
+      const height = image.naturalHeight
+      const [topLeft, topRight, bottomRight, bottomLeft] = orderPoints(points)
+      const textureWidth = Math.max(240, Math.round(
+        (distance(topLeft, topRight) + distance(bottomLeft, bottomRight)) / 2,
+      ))
+      const textureHeight = Math.max(240, Math.round(
+        (distance(topLeft, bottomLeft) + distance(topRight, bottomRight)) / 2,
+      ))
+      const textureCanvas = document.createElement('canvas')
+      textureCanvas.width = textureWidth
+      textureCanvas.height = textureHeight
+      const textureContext = textureCanvas.getContext('2d')
+      const tileSize = 120
+      const tileRatio = tileImage.naturalWidth / tileImage.naturalHeight
+      const cellWidth = tileSize
+      const cellHeight = tileSize / tileRatio
+      const grout = 3
+
+      textureContext.fillStyle = '#dedbd2'
+      textureContext.fillRect(0, 0, textureWidth, textureHeight)
+      for (let y = 0; y < textureHeight; y += cellHeight) {
+        for (let x = 0; x < textureWidth; x += cellWidth) {
+          textureContext.drawImage(
+            tileImage,
+            x + grout,
+            y + grout,
+            cellWidth - grout * 2,
+            cellHeight - grout * 2,
+          )
+        }
+      }
+
+      tileMat = cv.imread(textureCanvas)
+      warpedMat = cv.Mat.zeros(height, width, cv.CV_8UC4)
+      sourcePoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        0, 0,
+        textureWidth - 1, 0,
+        textureWidth - 1, textureHeight - 1,
+        0, textureHeight - 1,
+      ])
+      destinationPoints = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        topLeft.x, topLeft.y,
+        topRight.x, topRight.y,
+        bottomRight.x, bottomRight.y,
+        bottomLeft.x, bottomLeft.y,
+      ])
+      transform = cv.getPerspectiveTransform(sourcePoints, destinationPoints)
+      cv.warpPerspective(
+        tileMat,
+        warpedMat,
+        transform,
+        new cv.Size(width, height),
+        cv.INTER_LINEAR,
+        cv.BORDER_CONSTANT,
+        new cv.Scalar(0, 0, 0, 0),
+      )
+      cv.imshow(canvas, warpedMat)
+
+      const maskCanvas = document.createElement('canvas')
+      maskCanvas.width = width
+      maskCanvas.height = height
+      const maskContext = maskCanvas.getContext('2d', { willReadFrequently: true })
+      maskContext.drawImage(maskImage, 0, 0, width, height)
+      const maskPixels = maskContext.getImageData(0, 0, width, height)
+      for (let index = 0; index < maskPixels.data.length; index += 4) {
+        const isInsideMask = maskPixels.data[index] > 127
+        maskPixels.data[index] = 255
+        maskPixels.data[index + 1] = 255
+        maskPixels.data[index + 2] = 255
+        maskPixels.data[index + 3] = isInsideMask ? 255 : 0
+      }
+      maskContext.putImageData(maskPixels, 0, 0)
+
+      const outputContext = canvas.getContext('2d')
+      outputContext.globalCompositeOperation = 'destination-in'
+      outputContext.drawImage(maskCanvas, 0, 0)
+      outputContext.globalCompositeOperation = 'source-over'
+      const previewUrl = canvas.toDataURL('image/png')
+
+      setPointsByArea((current) => ({
+        ...current,
+        [areaId]: [topLeft, topRight, bottomRight, bottomLeft].map((point) => ({
+          ...point,
+          left: (point.x / width) * 100,
+          top: (point.y / height) * 100,
+        })),
+      }))
+      setSelectedProductsByArea((current) => ({ ...current, [areaId]: product }))
+      setAppliedPreviewsByArea((current) => ({
+        ...current,
+        [areaId]: { productId: product.id, url: previewUrl },
+      }))
+      outputContext.clearRect(0, 0, canvas.width, canvas.height)
+    } catch (error) {
+      clearWorkingCanvas()
+      setApplyError(error.message || 'Product perspective could not be applied.')
+    } finally {
+      tileMat?.delete()
+      warpedMat?.delete()
+      sourcePoints?.delete()
+      destinationPoints?.delete()
+      transform?.delete()
+      setIsApplying(false)
+      setApplyingProduct(null)
+    }
+  }
+
+  const activeArea = areas.find((area) => area.id === activeAreaId) ?? null
+  const activeMaskState = activeArea ? maskStates[activeArea.id] : null
+  const activePoints = activeAreaId ? pointsByArea[activeAreaId] || [] : []
+  const selectedProduct = activeAreaId ? selectedProductsByArea[activeAreaId] || null : null
+  const canUseProducts = Boolean(activeArea && activeMaskState?.status === 'success' && activePoints.length === 4)
+  const roomAspectRatio = roomImageSize.width / roomImageSize.height
+  const roomFrameStyle = {
+    aspectRatio: `${roomImageSize.width} / ${roomImageSize.height}`,
+    width: `min(100%, calc((100dvh - 190px) * ${roomAspectRatio}))`,
+  }
+
+  return (
+    <div className="grid h-screen grid-rows-[72px_minmax(0,1fr)] overflow-hidden border-t-[5px] border-[#333] bg-[#f1f3f4] font-sans text-[#242424]">
+      <header className="grid grid-cols-[auto_1fr_auto] items-center border-b border-[#ddd] bg-white px-5 max-md:px-3"><Brand /><nav className="flex items-center justify-center gap-1 max-md:hidden"><button className="rounded-lg px-3 py-2 text-[11px] text-[#555]">53%</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="compare" size={17} /> Compare</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="download" size={17} /> Download</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="share" size={17} /> Share</button><button onClick={onChangeRoom} className="ml-2 flex items-center gap-2 rounded-full border border-[#ef4444] px-4 py-2 text-[11px] font-semibold text-[#ef4444]"><Icon name="plus" size={16} /> New room</button></nav><button className="justify-self-end rounded-full bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#666]">Exit</button></header>
+
+      <main className="grid min-h-0 grid-cols-[58px_310px_minmax(0,1fr)] max-lg:grid-cols-[58px_260px_minmax(0,1fr)] max-md:grid-cols-[52px_minmax(0,1fr)]">
+        <aside className="z-20 flex min-h-0 flex-col items-center bg-[#242424]"><ActivityButton active={panel === 'points'} icon="points" label="Surface points" onClick={() => setPanel('points')} /><ActivityButton active={panel === 'products'} icon="products" label={canUseProducts ? 'Products' : 'Add 4 points first'} disabled={!canUseProducts} onClick={() => { setPointMode(false); setPanel('products') }} /><div className="mt-auto w-full border-t border-white/10"><ActivityButton icon="adjust" label="Settings" /></div></aside>
+        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} pointsByArea={pointsByArea} selectedProductsByArea={selectedProductsByArea} onSelectArea={selectArea} onDeleteArea={deleteArea} onOpenProducts={openProductsForArea} maskStates={maskStates} pointMode={pointMode} onStartPoints={startAddingPoints} onResetPoints={resetPoints} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} applyingProduct={applyingProduct} onSelectProduct={applyProduct} isApplying={isApplying} activeArea={activeArea} applyError={applyError} />}</div>
+        <section className="relative grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)_58px] bg-[#f3f4f5] bg-[radial-gradient(#d0d0d0_0.7px,transparent_0.7px)] bg-[length:7px_7px]">
+          <div className="flex items-center justify-between px-5 text-[9px] text-[#888]"><span>Workspace / <strong className="text-[#333]">{room.name}</strong></span><span className="rounded-full bg-white px-3 py-1 shadow-sm">{panel === 'points' ? 'Surface areas' : 'Products'}</span></div>
+          <div className="flex min-h-0 items-center justify-center px-5 pb-5">
+            <div
+              onClick={handleRoomClick}
+              style={roomFrameStyle}
+              className={`relative max-h-full max-w-[1180px] overflow-hidden rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)] ${(isAddingArea || pointMode) ? 'cursor-crosshair ring-2 ring-[#ef4444] ring-offset-2' : ''}`}
+            >
+              <img
+                ref={roomImageRef}
+                src={room.src}
+                alt={room.name}
+                onLoad={(event) => setRoomImageSize({
+                  width: event.currentTarget.naturalWidth,
+                  height: event.currentTarget.naturalHeight,
+                })}
+                className="absolute inset-0 block h-full w-full select-none object-contain"
+                draggable="false"
+              />
+
+              {activeMaskState?.status === 'success' && !appliedPreviewsByArea[activeAreaId] && (
+                <img src={activeMaskState.url} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-contain" />
+              )}
+
+              {areas.map((area) => appliedPreviewsByArea[area.id] && (
+                <img key={area.id} src={appliedPreviewsByArea[area.id].url} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain" />
+              ))}
+
+              <canvas ref={tileCanvasRef} className="pointer-events-none absolute inset-0 z-[3] h-full w-full" aria-hidden="true" />
+
+              {activePoints.length > 1 && (
+                <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" viewBox={`0 0 ${roomImageSize.width} ${roomImageSize.height}`} preserveAspectRatio="none" aria-hidden="true">
+                  {activePoints.length === 4
+                    ? <polygon points={activePoints.map(({ x, y }) => `${x},${y}`).join(' ')} fill="rgba(239,68,68,0.08)" stroke="#ef4444" strokeWidth="5" strokeDasharray="14 10" />
+                    : <polyline points={activePoints.map(({ x, y }) => `${x},${y}`).join(' ')} fill="none" stroke="#ef4444" strokeWidth="5" strokeDasharray="14 10" />}
+                </svg>
+              )}
+
+              {activePoints.map((point, index) => (
+                <button
+                  key={`${activeAreaId}-${index}`}
+                  type="button"
+                  style={{ left: `${point.left}%`, top: `${point.top}%` }}
+                  className="absolute z-30 grid size-7 -translate-x-1/2 -translate-y-1/2 touch-none place-items-center rounded-full border-2 border-white bg-[#ef4444] text-[9px] font-bold text-white shadow-[0_3px_12px_rgba(0,0,0,.35)]"
+                  aria-label={`Perspective point ${index + 1}`}
+                  onClick={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => handlePerspectivePointDown(index, event)}
+                  onPointerMove={handlePerspectivePointMove}
+                  onPointerUp={handlePerspectivePointUp}
+                  onPointerCancel={handlePerspectivePointUp}
+                >
+                  {index + 1}
+                </button>
+              ))}
+
+              {activeMaskState?.status === 'loading' && (
+                <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full bg-[#242424]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg backdrop-blur-sm"><span className="size-3 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Generating {activeArea?.name} mask…</div>
+              )}
+
+              {isApplying && (
+                <div className="pointer-events-none absolute left-1/2 top-1/2 z-40 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full bg-[#242424]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg backdrop-blur-sm"><span className="size-3 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Applying {applyingProduct?.name}…</div>
+              )}
+
+              {activeMaskState?.status === 'error' && (
+                <div className="absolute bottom-4 left-1/2 z-20 max-w-[80%] -translate-x-1/2 rounded-lg bg-[#242424]/90 px-4 py-2 text-center text-[9px] font-semibold text-white shadow-lg" role="alert">{activeMaskState.error}</div>
+              )}
+
+              {isAddingArea && !pendingArea && <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-[#222]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg">Click the image to place Area {String(areas.length + 1).padStart(2, '0')}</div>}
+
+              {pointMode && <div className="pointer-events-none absolute left-1/2 top-4 z-40 -translate-x-1/2 rounded-full bg-[#222]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg">Add perspective points · {activePoints.length}/4</div>}
+
+              {areas.map((area) => {
+                const selected = area.id === activeAreaId
+                return (
+                  <button
+                    key={area.id}
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); selectArea(area) }}
+                    style={{ left: `${area.x}%`, top: `${area.y}%` }}
+                    className={`group absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white px-3 py-1.5 text-[8px] font-bold text-white shadow-[0_4px_14px_rgba(0,0,0,.35)] transition hover:scale-105 ${selected ? 'bg-[#ef4444] ring-4 ring-[#ef4444]/25' : 'bg-[#242424]/90'}`}
+                    aria-label={`Select ${area.name}`}
+                  >
+                    <span className="whitespace-nowrap">{area.name}</span>
+                  </button>
+                )
+              })}
+
+              {pendingArea && (
+                <span
+                  style={{ left: `${pendingArea.x}%`, top: `${pendingArea.y}%` }}
+                  className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
+                >
+                  <span className="relative flex items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-[#ef4444] px-3 py-1.5 text-[8px] font-bold text-white shadow-[0_4px_14px_rgba(0,0,0,.28)] ring-4 ring-[#ef4444]/20"><Icon name="points" size={12} /> {draftName.trim() || `Area ${String(areas.length + 1).padStart(2, '0')}`}</span>
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="grid grid-cols-[minmax(170px,240px)_minmax(0,1fr)] border-t border-[#ddd] bg-white">
+            <div className="flex min-w-0 items-center gap-3 border-r border-[#ddd] px-4"><span className="relative grid size-8 shrink-0 place-items-center rounded-lg bg-[#f2f2f2] text-[#333]"><Icon name={panel === 'points' ? 'layers' : 'products'} size={17} /><i className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-[#ef4444] text-[8px] not-italic text-white">{panel === 'points' ? areas.length : selectedProduct ? 1 : 0}</i></span><span className="min-w-0"><small className="block text-[8px] text-[#888]">{panel === 'points' ? 'Selected surface' : 'Selected product'}</small><strong className="mt-0.5 block truncate text-[10px]">{panel === 'points' ? (activeArea ? `${activeArea.name} · ${activeArea.type}` : 'No area selected') : (selectedProduct?.name || 'Choose a product')}</strong></span></div>
+            <div className="flex items-center justify-end gap-1 overflow-x-auto px-4 text-[10px]">
+              <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="reset" size={17} /> Reset</button>
+              <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="grout" size={17} /> Grout</button>
+              <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="layout" size={17} /> Layout</button>
+              <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="applied" size={17} /> Applied products</button>
+              <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="compare" size={17} /> Compare</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  )
+}
+
