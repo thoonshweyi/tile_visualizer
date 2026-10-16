@@ -145,6 +145,7 @@ function Icon({ name, size = 19 }) {
     grout: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
     layout: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M9 10h12" /></>,
     applied: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M17.5 14v7M14 17.5h7" /></>,
+    trash: <><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /><path d="M10 11v5M14 11v5" /></>,
   }
 
   return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
@@ -253,9 +254,11 @@ function ActivityButton({ active, icon, label, onClick, disabled = false }) {
 function PointsPanel({
   areas,
   activeAreaId,
-  activeArea,
-  activePoints,
+  pointsByArea,
+  selectedProductsByArea,
   onSelectArea,
+  onDeleteArea,
+  onOpenProducts,
   maskStates,
   pointMode,
   onStartPoints,
@@ -335,44 +338,66 @@ function PointsPanel({
         ))}
       </div>
 
-      {activeArea && !isAddingArea && (
-        <div className="border-b border-[#e8e8e8] bg-[#fafafa] p-3">
-          <div className="rounded-xl border border-[#e1e1e1] bg-white p-3">
-            <div className="flex items-center justify-between gap-3">
-              <span><small className="block text-[8px] font-bold uppercase tracking-[0.08em] text-[#888]">Perspective setup</small><strong className="mt-1 block text-[10px]">{activePoints.length}/4 points added</strong></span>
-              <span className={`grid size-8 place-items-center rounded-full text-[10px] font-bold ${activePoints.length === 4 ? 'bg-[#eaf5e4] text-[#568638]' : 'bg-[#fff0ef] text-[#ef4444]'}`}>{activePoints.length}</span>
-            </div>
-            <button
-              type="button"
-              disabled={maskStates[activeArea.id]?.status !== 'success'}
-              onClick={onStartPoints}
-              className={`mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[9px] font-bold transition disabled:cursor-not-allowed disabled:bg-[#e7e7e7] disabled:text-[#999] ${pointMode ? 'bg-[#242424] text-white' : 'bg-[#ef4444] text-white hover:bg-[#dc3838]'}`}
-            >
-              <Icon name="points" size={14} /> {pointMode ? `Click image · ${4 - activePoints.length} left` : activePoints.length === 4 ? 'Reset points' : activePoints.length ? 'Continue points' : 'Add points'}
-            </button>
-            <p className="mt-2 text-[8px] leading-4 text-[#888]">{maskStates[activeArea.id]?.status !== 'success' ? 'Wait until the area mask is ready.' : activePoints.length === 4 ? 'Product panel is now available.' : 'Place four corners on the room image.'}</p>
-          </div>
-        </div>
-      )}
-
       <div className="min-h-0 flex-1 overflow-y-auto">
         {visibleAreas.length === 0 && !isAddingArea && (
           <div className="px-6 py-10 text-center"><span className="mx-auto grid size-11 place-items-center rounded-full bg-[#f3f3f3] text-[#999]"><Icon name="points" size={20} /></span><strong className="mt-3 block text-[10px]">No areas yet</strong><p className="mt-1 text-[8px] leading-4 text-[#999]">Click Add area to mark your first wall or floor.</p></div>
         )}
-        {visibleAreas.map((area) => (
-          <button key={area.id} type="button" onClick={() => onSelectArea(area)} className={`grid w-full grid-cols-[45px_1fr_auto] items-center gap-3 border-b border-[#ededed] p-3 text-left ${activeAreaId === area.id ? 'bg-[#fff0ef]' : 'hover:bg-[#fafafa]'}`}>
-            <span className={`grid size-11 place-items-center rounded-lg text-white ${activeAreaId === area.id ? 'bg-[#ef4444]' : 'bg-[#333]'}`}><strong className="text-[11px]">{String(areas.indexOf(area) + 1).padStart(2, '0')}</strong></span>
-            <span className="min-w-0"><strong className="block truncate text-[11px]">{area.name}</strong><small className="mt-1 flex items-center gap-1 text-[9px] text-[#999]"><Icon name={area.type === 'Wall' ? 'wall' : 'grid'} size={12} /> {area.type}</small>{maskStates[area.id]?.status === 'loading' && <small className="mt-1 block text-[8px] font-semibold text-[#ef4444]">Generating mask…</small>}{maskStates[area.id]?.status === 'success' && <small className="mt-1 block text-[8px] font-semibold text-[#568638]">Mask ready</small>}{maskStates[area.id]?.status === 'error' && <small className="mt-1 block truncate text-[8px] font-semibold text-[#ef4444]" title={maskStates[area.id].error}>Mask failed</small>}</span>
-            <span className={`rounded-full px-2 py-1 text-[8px] font-bold text-white ${activeAreaId === area.id ? 'bg-[#ef4444]' : 'bg-[#242424]'}`}>{activeAreaId === area.id ? 'Selected' : `#${areas.indexOf(area) + 1}`}</span>
-          </button>
-        ))}
+        {visibleAreas.map((area) => {
+          const selected = activeAreaId === area.id
+          const areaPoints = pointsByArea[area.id] || []
+          const selectedProduct = selectedProductsByArea[area.id]
+          const maskReady = maskStates[area.id]?.status === 'success'
+
+          return (
+            <div key={area.id} className={`border-b border-[#ededed] ${selected ? 'bg-[#fff0ef]' : 'bg-white hover:bg-[#fafafa]'}`}>
+              <div className="grid grid-cols-[45px_minmax(0,1fr)_auto] items-center gap-3 p-3">
+                <button type="button" onClick={() => onSelectArea(area)} className={`relative grid size-11 overflow-hidden rounded-lg text-white ${selectedProduct ? 'border border-[#ddd] bg-white' : selected ? 'place-items-center bg-[#ef4444]' : 'place-items-center bg-[#333]'}`}>
+                  {selectedProduct
+                    ? <><img src={selectedProduct.src} alt={selectedProduct.name} className="size-full object-cover" /><span className="absolute bottom-0.5 right-0.5 grid size-4 place-items-center rounded bg-[#242424]/85 text-[7px] font-bold text-white">{areas.indexOf(area) + 1}</span></>
+                    : <strong className="text-[11px]">{String(areas.indexOf(area) + 1).padStart(2, '0')}</strong>}
+                </button>
+                <button type="button" onClick={() => onSelectArea(area)} className="min-w-0 text-left">
+                  <strong className="block truncate text-[11px]">{area.name}</strong>
+                  <small className="mt-1 flex items-center gap-1 text-[9px] text-[#999]"><Icon name={area.type === 'Wall' ? 'wall' : 'grid'} size={12} /> {area.type} · {areaPoints.length}/4 points</small>
+                  {maskStates[area.id]?.status === 'loading' && <small className="mt-1 block text-[8px] font-semibold text-[#ef4444]">Generating mask…</small>}
+                  {maskReady && <small className="mt-1 block text-[8px] font-semibold text-[#568638]">{selectedProduct ? `${selectedProduct.name} applied` : 'Mask ready'}</small>}
+                  {maskStates[area.id]?.status === 'error' && <small className="mt-1 block truncate text-[8px] font-semibold text-[#ef4444]" title={maskStates[area.id].error}>Mask failed</small>}
+                </button>
+                <button type="button" onClick={() => onDeleteArea(area.id)} className="grid size-7 place-items-center rounded-md text-[#999] transition hover:bg-white hover:text-[#ef4444]" aria-label={`Delete ${area.name}`} title="Delete area"><Icon name="trash" size={14} /></button>
+              </div>
+
+              {selected && (
+                <div className="border-t border-[#f2cfcc] px-3 pb-3 pt-2">
+                  <div className="flex items-center justify-between text-[8px]"><span className="font-semibold text-[#555]">Perspective points</span><span className="font-bold text-[#ef4444]">{areaPoints.length}/4</span></div>
+                  <div className="mt-2 grid grid-cols-4 gap-1">{[0, 1, 2, 3].map((pointIndex) => <span key={pointIndex} className={`h-1 rounded-full ${pointIndex < areaPoints.length ? 'bg-[#ef4444]' : 'bg-[#ddd]'}`} />)}</div>
+                  {areaPoints.length === 4 ? (
+                    <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                      <button type="button" onClick={() => onOpenProducts(area)} className="h-9 rounded-lg bg-[#242424] px-3 text-[9px] font-bold text-white hover:bg-black">{selectedProduct ? 'Change product' : 'Select product'}</button>
+                      <button type="button" onClick={onStartPoints} className="grid size-9 place-items-center rounded-lg border border-[#ddd] bg-white text-[#777] hover:border-[#ef4444] hover:text-[#ef4444]" aria-label="Reset perspective points" title="Reset points"><Icon name="reset" size={14} /></button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!maskReady}
+                      onClick={onStartPoints}
+                      className={`mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[9px] font-bold transition disabled:cursor-not-allowed disabled:bg-[#e7e7e7] disabled:text-[#999] ${pointMode ? 'bg-[#242424] text-white' : 'bg-[#ef4444] text-white hover:bg-[#dc3838]'}`}
+                    >
+                      <Icon name="points" size={14} /> {pointMode ? `Click image · ${4 - areaPoints.length} left` : areaPoints.length ? 'Continue points' : 'Add points'}
+                    </button>
+                  )}
+                  {!maskReady && <p className="mt-2 text-[8px] text-[#888]">Wait until the area mask is ready.</p>}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
       <div className="m-4 rounded-xl bg-[#f5f5f5] p-3 text-[9px] leading-4 text-[#777]"><span className="flex items-center justify-between"><strong className="text-[#333]">Surface areas</strong><b className="text-[#ef4444]">{areas.length}/6</b></span><span className="mt-1 block">Choose an area in the panel or directly on the image.</span></div>
     </aside>
   )
 }
 
-function ProductsPanel({ selectedProduct, onSelectProduct, isApplying, activeArea, applyError }) {
+function ProductsPanel({ selectedProduct, applyingProduct, onSelectProduct, isApplying, activeArea, applyError }) {
   const [query, setQuery] = useState('')
   const visible = PRODUCTS.filter((product) => product.name.toLowerCase().includes(query.toLowerCase()))
   return (
@@ -380,7 +405,7 @@ function ProductsPanel({ selectedProduct, onSelectProduct, isApplying, activeAre
       <div className="border-b border-[#e5e5e5] p-4"><p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#ef4444]">PRODUCTS</p><h2 className="mt-1 text-sm font-bold">Choose a product</h2><p className="mt-1 text-[8px] text-[#888]">Applying to {activeArea?.name}</p><label className="mt-3 flex h-9 items-center gap-2 rounded-lg border border-[#ddd] px-3 text-[#888] focus-within:border-[#ef4444]"><Icon name="search" size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products" className="min-w-0 flex-1 border-0 bg-transparent text-[10px] text-[#333] outline-none" /></label>{applyError && <p className="mt-2 rounded-lg bg-[#fff0ef] px-3 py-2 text-[8px] font-semibold leading-4 text-[#ef4444]">{applyError}</p>}</div>
       <div className="flex gap-2 border-b border-[#e8e8e8] p-3"><button className="rounded-full bg-[#242424] px-3 py-1.5 text-[9px] text-white">All</button><button className="rounded-full border border-[#ddd] px-3 py-1.5 text-[9px] text-[#666]">Wall</button><button className="rounded-full border border-[#ddd] px-3 py-1.5 text-[9px] text-[#666]">Floor</button></div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-        {visible.map((product) => <button key={product.id} type="button" disabled={isApplying} onClick={() => onSelectProduct(product)} className={`grid w-full grid-cols-[70px_1fr] gap-3 rounded-xl border bg-white p-2 text-left transition disabled:cursor-wait disabled:opacity-60 ${selectedProduct?.id === product.id ? 'border-[#ef4444] shadow-[0_5px_16px_rgba(0,0,0,.08)]' : 'border-[#dedede] hover:border-[#aaa]'}`}><img src={product.src} alt="" className="size-[70px] rounded-lg border border-[#eee] object-cover" /><span className="min-w-0 py-1"><span className="flex items-start justify-between gap-2"><strong className="truncate text-[10px] uppercase">{product.name}</strong>{selectedProduct?.id === product.id && <i className="grid size-4 shrink-0 place-items-center rounded-full bg-[#ef4444] text-[9px] not-italic text-white">✓</i>}</span><small className="mt-1 block text-[9px] text-[#777]">SKU: {product.sku}</small><small className="block text-[9px] text-[#777]">{product.size}</small>{product.badge && <em className="mt-2 inline-block rounded bg-[#242424] px-1.5 py-0.5 text-[7px] not-italic text-white">{product.badge}</em>}{isApplying && selectedProduct?.id === product.id && <small className="mt-2 block text-[8px] font-semibold text-[#ef4444]">Applying perspective…</small>}</span></button>)}
+        {visible.map((product) => <button key={product.id} type="button" disabled={isApplying} onClick={() => onSelectProduct(product)} className={`grid w-full grid-cols-[70px_1fr] gap-3 rounded-xl border bg-white p-2 text-left transition disabled:cursor-wait disabled:opacity-60 ${selectedProduct?.id === product.id ? 'border-[#ef4444] shadow-[0_5px_16px_rgba(0,0,0,.08)]' : 'border-[#dedede] hover:border-[#aaa]'}`}><img src={product.src} alt="" className="size-[70px] rounded-lg border border-[#eee] object-cover" /><span className="min-w-0 py-1"><span className="flex items-start justify-between gap-2"><strong className="truncate text-[10px] uppercase">{product.name}</strong>{selectedProduct?.id === product.id && <i className="grid size-4 shrink-0 place-items-center rounded-full bg-[#ef4444] text-[9px] not-italic text-white">✓</i>}</span><small className="mt-1 block text-[9px] text-[#777]">SKU: {product.sku}</small><small className="block text-[9px] text-[#777]">{product.size}</small>{product.badge && <em className="mt-2 inline-block rounded bg-[#242424] px-1.5 py-0.5 text-[7px] not-italic text-white">{product.badge}</em>}{isApplying && applyingProduct?.id === product.id && <small className="mt-2 block text-[8px] font-semibold text-[#ef4444]">Applying perspective…</small>}</span></button>)}
       </div>
     </aside>
   )
@@ -404,9 +429,10 @@ function Workspace({ room, onChangeRoom }) {
   const [pendingArea, setPendingArea] = useState(null)
   const [draftName, setDraftName] = useState('Area 01')
   const [draftType, setDraftType] = useState('Wall')
-  const [selectedProduct, setSelectedProduct] = useState(null)
+  const [selectedProductsByArea, setSelectedProductsByArea] = useState({})
+  const [appliedPreviewsByArea, setAppliedPreviewsByArea] = useState({})
+  const [applyingProduct, setApplyingProduct] = useState(null)
   const [isApplying, setIsApplying] = useState(false)
-  const [tileAppliedAreaId, setTileAppliedAreaId] = useState(null)
   const [applyError, setApplyError] = useState('')
 
   useEffect(() => () => {
@@ -532,11 +558,24 @@ function Workspace({ room, onChangeRoom }) {
     }
   }
 
-  const clearTilePreview = () => {
+  const clearWorkingCanvas = () => {
     const canvas = tileCanvasRef.current
     if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
-    setTileAppliedAreaId(null)
     setApplyError('')
+  }
+
+  const clearAreaProduct = (areaId) => {
+    if (!areaId) return
+    setSelectedProductsByArea((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
+    setAppliedPreviewsByArea((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
   }
 
   const getPerspectivePoint = (clientX, clientY) => {
@@ -561,9 +600,8 @@ function Workspace({ room, onChangeRoom }) {
   }
 
   const selectArea = (area) => {
-    clearTilePreview()
+    clearWorkingCanvas()
     setPointMode(false)
-    setSelectedProduct(null)
     setPanel('points')
     setActiveAreaId(area.id)
     requestMaskForArea(area)
@@ -575,16 +613,56 @@ function Workspace({ room, onChangeRoom }) {
     if (currentPoints.length === 4) {
       setPointsByArea((current) => ({ ...current, [activeAreaId]: [] }))
     }
-    clearTilePreview()
-    setSelectedProduct(null)
+    clearWorkingCanvas()
+    clearAreaProduct(activeAreaId)
     setPointMode(true)
+  }
+
+  const openProductsForArea = (area) => {
+    if (maskStates[area.id]?.status !== 'success' || (pointsByArea[area.id] || []).length !== 4) return
+    clearWorkingCanvas()
+    setActiveAreaId(area.id)
+    setPointMode(false)
+    setPanel('products')
+  }
+
+  const deleteArea = (areaId) => {
+    if (maskRequestRef.current?.areaId === areaId) {
+      maskRequestRef.current.controller.abort()
+      maskRequestRef.current = null
+    }
+    const maskState = maskStates[areaId]
+    const urlsToRelease = [maskState?.url, maskState?.maskSource]
+    urlsToRelease.forEach((url) => {
+      if (url && maskObjectUrlsRef.current.has(url)) {
+        URL.revokeObjectURL(url)
+        maskObjectUrlsRef.current.delete(url)
+      }
+    })
+    setAreas((current) => current.filter((area) => area.id !== areaId))
+    setMaskStates((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
+    setPointsByArea((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
+    clearAreaProduct(areaId)
+    if (activeAreaId === areaId) {
+      clearWorkingCanvas()
+      setActiveAreaId(null)
+      setPointMode(false)
+      setPanel('points')
+    }
   }
 
   const startAddingArea = () => {
     if (areas.length >= 6) return
-    clearTilePreview()
+    clearWorkingCanvas()
     setPointMode(false)
-    setSelectedProduct(null)
     setPanel('points')
     setIsAddingArea(true)
     setActiveAreaId(null)
@@ -608,7 +686,8 @@ function Workspace({ room, onChangeRoom }) {
       const completedPoints = nextPoints.length === 4 ? orderPoints(nextPoints) : nextPoints
       setPointsByArea((current) => ({ ...current, [activeAreaId]: completedPoints }))
       if (completedPoints.length === 4) setPointMode(false)
-      clearTilePreview()
+      clearWorkingCanvas()
+      clearAreaProduct(activeAreaId)
       return
     }
 
@@ -630,8 +709,8 @@ function Workspace({ room, onChangeRoom }) {
   const handlePerspectivePointDown = (index, event) => {
     event.stopPropagation()
     if (!activeAreaId) return
-    clearTilePreview()
-    setSelectedProduct(null)
+    clearWorkingCanvas()
+    clearAreaProduct(activeAreaId)
     dragPointRef.current = { areaId: activeAreaId, index }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -683,14 +762,15 @@ function Workspace({ room, onChangeRoom }) {
   }
 
   const applyProduct = async (product) => {
-    const points = activeAreaId ? pointsByArea[activeAreaId] || [] : []
-    const maskSource = activeAreaId ? maskStates[activeAreaId]?.maskSource : ''
-    if (!activeAreaId || points.length !== 4 || !maskSource) {
+    const areaId = activeAreaId
+    const points = areaId ? pointsByArea[areaId] || [] : []
+    const maskSource = areaId ? maskStates[areaId]?.maskSource : ''
+    if (!areaId || points.length !== 4 || !maskSource) {
       setApplyError('Select an area and add four points before choosing a product.')
       return
     }
 
-    setSelectedProduct(product)
+    setApplyingProduct(product)
     setIsApplying(true)
     setApplyError('')
 
@@ -788,18 +868,24 @@ function Workspace({ room, onChangeRoom }) {
       outputContext.globalCompositeOperation = 'destination-in'
       outputContext.drawImage(maskCanvas, 0, 0)
       outputContext.globalCompositeOperation = 'source-over'
+      const previewUrl = canvas.toDataURL('image/png')
 
       setPointsByArea((current) => ({
         ...current,
-        [activeAreaId]: [topLeft, topRight, bottomRight, bottomLeft].map((point) => ({
+        [areaId]: [topLeft, topRight, bottomRight, bottomLeft].map((point) => ({
           ...point,
           left: (point.x / width) * 100,
           top: (point.y / height) * 100,
         })),
       }))
-      setTileAppliedAreaId(activeAreaId)
+      setSelectedProductsByArea((current) => ({ ...current, [areaId]: product }))
+      setAppliedPreviewsByArea((current) => ({
+        ...current,
+        [areaId]: { productId: product.id, url: previewUrl },
+      }))
+      outputContext.clearRect(0, 0, canvas.width, canvas.height)
     } catch (error) {
-      clearTilePreview()
+      clearWorkingCanvas()
       setApplyError(error.message || 'Product perspective could not be applied.')
     } finally {
       tileMat?.delete()
@@ -808,12 +894,14 @@ function Workspace({ room, onChangeRoom }) {
       destinationPoints?.delete()
       transform?.delete()
       setIsApplying(false)
+      setApplyingProduct(null)
     }
   }
 
   const activeArea = areas.find((area) => area.id === activeAreaId) ?? null
   const activeMaskState = activeArea ? maskStates[activeArea.id] : null
   const activePoints = activeAreaId ? pointsByArea[activeAreaId] || [] : []
+  const selectedProduct = activeAreaId ? selectedProductsByArea[activeAreaId] || null : null
   const canUseProducts = Boolean(activeArea && activeMaskState?.status === 'success' && activePoints.length === 4)
   const roomAspectRatio = roomImageSize.width / roomImageSize.height
   const roomFrameStyle = {
@@ -827,7 +915,7 @@ function Workspace({ room, onChangeRoom }) {
 
       <main className="grid min-h-0 grid-cols-[58px_310px_minmax(0,1fr)] max-lg:grid-cols-[58px_260px_minmax(0,1fr)] max-md:grid-cols-[52px_minmax(0,1fr)]">
         <aside className="z-20 flex min-h-0 flex-col items-center bg-[#242424]"><ActivityButton active={panel === 'points'} icon="points" label="Surface points" onClick={() => setPanel('points')} /><ActivityButton active={panel === 'products'} icon="products" label={canUseProducts ? 'Products' : 'Add 4 points first'} disabled={!canUseProducts} onClick={() => { setPointMode(false); setPanel('products') }} /><div className="mt-auto w-full border-t border-white/10"><ActivityButton icon="adjust" label="Settings" /></div></aside>
-        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} activeArea={activeArea} activePoints={activePoints} onSelectArea={selectArea} maskStates={maskStates} pointMode={pointMode} onStartPoints={startAddingPoints} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} onSelectProduct={applyProduct} isApplying={isApplying} activeArea={activeArea} applyError={applyError} />}</div>
+        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} pointsByArea={pointsByArea} selectedProductsByArea={selectedProductsByArea} onSelectArea={selectArea} onDeleteArea={deleteArea} onOpenProducts={openProductsForArea} maskStates={maskStates} pointMode={pointMode} onStartPoints={startAddingPoints} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} applyingProduct={applyingProduct} onSelectProduct={applyProduct} isApplying={isApplying} activeArea={activeArea} applyError={applyError} />}</div>
         <section className="relative grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)_58px] bg-[#f3f4f5] bg-[radial-gradient(#d0d0d0_0.7px,transparent_0.7px)] bg-[length:7px_7px]">
           <div className="flex items-center justify-between px-5 text-[9px] text-[#888]"><span>Workspace / <strong className="text-[#333]">{room.name}</strong></span><span className="rounded-full bg-white px-3 py-1 shadow-sm">{panel === 'points' ? 'Surface areas' : 'Products'}</span></div>
           <div className="flex min-h-0 items-center justify-center px-5 pb-5">
@@ -848,11 +936,15 @@ function Workspace({ room, onChangeRoom }) {
                 draggable="false"
               />
 
-              {activeMaskState?.status === 'success' && tileAppliedAreaId !== activeAreaId && (
+              {activeMaskState?.status === 'success' && !appliedPreviewsByArea[activeAreaId] && (
                 <img src={activeMaskState.url} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-contain" />
               )}
 
-              <canvas ref={tileCanvasRef} className="pointer-events-none absolute inset-0 z-[2] h-full w-full" aria-hidden="true" />
+              {areas.map((area) => appliedPreviewsByArea[area.id] && (
+                <img key={area.id} src={appliedPreviewsByArea[area.id].url} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain" />
+              ))}
+
+              <canvas ref={tileCanvasRef} className="pointer-events-none absolute inset-0 z-[3] h-full w-full" aria-hidden="true" />
 
               {activePoints.length > 1 && (
                 <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" viewBox={`0 0 ${roomImageSize.width} ${roomImageSize.height}`} preserveAspectRatio="none" aria-hidden="true">
@@ -884,7 +976,7 @@ function Workspace({ room, onChangeRoom }) {
               )}
 
               {isApplying && (
-                <div className="pointer-events-none absolute left-1/2 top-1/2 z-40 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full bg-[#242424]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg backdrop-blur-sm"><span className="size-3 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Applying {selectedProduct?.name}…</div>
+                <div className="pointer-events-none absolute left-1/2 top-1/2 z-40 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full bg-[#242424]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg backdrop-blur-sm"><span className="size-3 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Applying {applyingProduct?.name}…</div>
               )}
 
               {activeMaskState?.status === 'error' && (
