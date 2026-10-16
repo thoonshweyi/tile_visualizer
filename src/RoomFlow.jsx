@@ -31,13 +31,6 @@ const PRODUCTS = [
   { id: 'pearl', name: 'Pearl Stone', sku: '602547', size: '600 × 600 mm', src: tile06 },
 ]
 
-const SURFACES = [
-  { id: 1, name: 'Wall 01', type: 'Wall' },
-  { id: 2, name: 'Wall 02', type: 'Wall' },
-  { id: 3, name: 'Wall 03', type: 'Wall' },
-  { id: 4, name: 'Floor 01', type: 'Floor' },
-]
-
 function Icon({ name, size = 19 }) {
   const paths = {
     arrow: <path d="M5 12h14M14 7l5 5-5 5" />,
@@ -149,16 +142,95 @@ function ActivityButton({ active, icon, label, onClick }) {
   return <button onClick={onClick} className={`group relative grid h-14 w-full place-items-center transition ${active ? 'bg-white text-[#ef4444]' : 'text-[#8a8a8a] hover:bg-[#333] hover:text-white'}`} aria-label={label}>{active && <span className="absolute left-0 h-8 w-[3px] rounded-r bg-[#ef4444]" />}<Icon name={icon} size={21} /><span className="pointer-events-none absolute left-[58px] z-30 hidden whitespace-nowrap rounded bg-[#222] px-2 py-1 text-[9px] text-white shadow group-hover:block">{label}</span></button>
 }
 
-function PointsPanel({ activeSurface, setActiveSurface }) {
+function PointsPanel({
+  areas,
+  activeAreaId,
+  setActiveAreaId,
+  isAddingArea,
+  pendingArea,
+  draftName,
+  setDraftName,
+  draftType,
+  setDraftType,
+  onStartAdd,
+  onCancelAdd,
+  onSaveArea,
+}) {
+  const [filter, setFilter] = useState('All')
+  const visibleAreas = filter === 'All' ? areas : areas.filter((area) => area.type === filter)
+  const areaLimitReached = areas.length >= 6
+
   return (
     <aside className="flex h-full min-h-0 flex-col border-r border-[#dfdfdf] bg-white">
-      <div className="flex min-h-[72px] items-center justify-between gap-3 border-b border-[#e5e5e5] px-4"><div><p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#ef4444]">SURFACE SETUP</p><h2 className="mt-1 text-sm font-bold">Define surface areas</h2></div><button className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#ef4444] px-3 py-2 text-[9px] font-semibold text-[#ef4444] transition hover:bg-[#ef4444] hover:text-white"><Icon name="points" size={14} /> Add area</button></div>
-      <div className="grid grid-cols-3 gap-1 border-b border-[#e8e8e8] p-3"><button className="rounded-lg bg-[#ef4444] py-2 text-[10px] font-semibold text-white">All</button><button className="flex items-center justify-center gap-1 rounded-lg py-2 text-[10px] text-[#777]"><Icon name="grid" size={14} /> Floor</button><button className="flex items-center justify-center gap-1 rounded-lg py-2 text-[10px] text-[#777]"><Icon name="wall" size={14} /> Wall</button></div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {SURFACES.map((surface) => <button key={surface.id} onClick={() => setActiveSurface(surface.id)} className={`grid w-full grid-cols-[45px_1fr_auto] items-center gap-3 border-b border-[#ededed] p-3 text-left ${activeSurface === surface.id ? 'bg-[#fff0ef]' : 'hover:bg-[#fafafa]'}`}><span className="grid size-11 place-items-center bg-[linear-gradient(45deg,#d8dade_25%,transparent_25%),linear-gradient(-45deg,#d8dade_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#d8dade_75%),linear-gradient(-45deg,transparent_75%,#d8dade_75%)] bg-[length:12px_12px] bg-[position:0_0,0_6px,6px_-6px,-6px_0] text-[#555]"><Icon name={surface.type === 'Wall' ? 'wall' : 'grid'} size={17} /></span><span><strong className="block text-[11px]">{surface.name}</strong><small className="mt-1 block text-[9px] text-[#999]">4 points</small></span><span className={`rounded-full px-2 py-1 text-[8px] font-bold ${activeSurface === surface.id ? 'bg-[#ef4444]' : 'bg-[#242424]'} text-white`}>Open</span></button>)}
-        {/* <button className="m-3 flex w-[calc(100%-24px)] items-center justify-center gap-2 rounded-xl border border-dashed border-[#ef4444] bg-[#fff8f7] py-3 text-[9px] font-bold text-[#ef4444] transition hover:bg-[#fff0ef]"><Icon name="plus" size={15} /> Add another point area</button> */}
+      <div className="flex min-h-[72px] items-center justify-between gap-3 border-b border-[#e5e5e5] px-4">
+        <div><p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#ef4444]">SURFACE SETUP</p><h2 className="mt-1 text-sm font-bold">Define surface areas</h2></div>
+        <button
+          type="button"
+          disabled={areaLimitReached || isAddingArea}
+          onClick={onStartAdd}
+          className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#ef4444] px-3 py-2 text-[9px] font-semibold text-[#ef4444] transition hover:bg-[#ef4444] hover:text-white disabled:cursor-not-allowed disabled:border-[#d5d5d5] disabled:bg-[#f4f4f4] disabled:text-[#aaa]"
+        >
+          <Icon name="points" size={14} /> Add area
+        </button>
       </div>
-      <div className="m-4 rounded-xl bg-[#f5f5f5] p-3 text-[10px] leading-4 text-[#777]"><strong className="text-[#333]">Surface areas</strong><br />Choose an area to review its wall or floor boundary.</div>
+
+      {isAddingArea && (
+        <div className="border-b border-[#e7e7e7] bg-[#fff8f7] p-3">
+          <div className="rounded-xl border border-[#ffc8c4] bg-white p-3 shadow-sm">
+            <div className="flex items-start gap-2">
+              <span className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white ${pendingArea ? 'bg-[#ef4444]' : 'animate-pulse bg-[#f59e0b]'}`}>{pendingArea ? '✓' : '1'}</span>
+              <div><strong className="block text-[10px]">{pendingArea ? 'Area position selected' : 'Click a position on the room'}</strong><small className="mt-1 block text-[8px] leading-4 text-[#888]">{pendingArea ? 'Set a name and surface type, then save.' : 'A temporary marker will appear where you click.'}</small></div>
+            </div>
+
+            <label className="mt-3 block text-[8px] font-bold uppercase tracking-[0.08em] text-[#666]">Name
+              <input
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                maxLength={30}
+                className="mt-1.5 h-9 w-full rounded-lg border border-[#ddd] px-3 text-[10px] font-medium normal-case tracking-normal text-[#333] outline-none focus:border-[#ef4444]"
+              />
+            </label>
+
+            <label className="mt-3 block text-[8px] font-bold uppercase tracking-[0.08em] text-[#666]">Type
+              <select
+                value={draftType}
+                onChange={(event) => setDraftType(event.target.value)}
+                className="mt-1.5 h-9 w-full rounded-lg border border-[#ddd] bg-white px-3 text-[10px] font-medium normal-case tracking-normal text-[#333] outline-none focus:border-[#ef4444]"
+              >
+                <option value="Wall">Wall</option>
+                <option value="Floor">Floor</option>
+              </select>
+            </label>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={onCancelAdd} className="h-9 rounded-lg border border-[#ddd] text-[9px] font-semibold text-[#666] hover:bg-[#f5f5f5]">Cancel</button>
+              <button type="button" disabled={!pendingArea || !draftName.trim()} onClick={onSaveArea} className="h-9 rounded-lg bg-[#ef4444] text-[9px] font-bold text-white hover:bg-[#dc3838] disabled:cursor-not-allowed disabled:bg-[#d8d8d8]">Save area</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-1 border-b border-[#e8e8e8] p-3">
+        {['All', 'Floor', 'Wall'].map((item) => (
+          <button key={item} type="button" onClick={() => setFilter(item)} className={`flex items-center justify-center gap-1 rounded-lg py-2 text-[10px] font-semibold ${filter === item ? 'bg-[#ef4444] text-white' : 'text-[#777] hover:bg-[#f5f5f5]'}`}>
+            {item === 'Floor' && <Icon name="grid" size={14} />}{item === 'Wall' && <Icon name="wall" size={14} />}{item}
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {visibleAreas.length === 0 && !isAddingArea && (
+          <div className="px-6 py-10 text-center"><span className="mx-auto grid size-11 place-items-center rounded-full bg-[#f3f3f3] text-[#999]"><Icon name="points" size={20} /></span><strong className="mt-3 block text-[10px]">No areas yet</strong><p className="mt-1 text-[8px] leading-4 text-[#999]">Click Add area to mark your first wall or floor.</p></div>
+        )}
+        {visibleAreas.map((area) => (
+          <button key={area.id} type="button" onClick={() => setActiveAreaId(area.id)} className={`grid w-full grid-cols-[45px_1fr_auto] items-center gap-3 border-b border-[#ededed] p-3 text-left ${activeAreaId === area.id ? 'bg-[#fff0ef]' : 'hover:bg-[#fafafa]'}`}>
+            <span className={`grid size-11 place-items-center rounded-lg text-white ${activeAreaId === area.id ? 'bg-[#ef4444]' : 'bg-[#333]'}`}><strong className="text-[11px]">{String(areas.indexOf(area) + 1).padStart(2, '0')}</strong></span>
+            <span><strong className="block truncate text-[11px]">{area.name}</strong><small className="mt-1 flex items-center gap-1 text-[9px] text-[#999]"><Icon name={area.type === 'Wall' ? 'wall' : 'grid'} size={12} /> {area.type}</small></span>
+            <span className={`rounded-full px-2 py-1 text-[8px] font-bold text-white ${activeAreaId === area.id ? 'bg-[#ef4444]' : 'bg-[#242424]'}`}>{activeAreaId === area.id ? 'Selected' : `#${areas.indexOf(area) + 1}`}</span>
+          </button>
+        ))}
+      </div>
+      <div className="m-4 rounded-xl bg-[#f5f5f5] p-3 text-[9px] leading-4 text-[#777]"><span className="flex items-center justify-between"><strong className="text-[#333]">Surface areas</strong><b className="text-[#ef4444]">{areas.length}/6</b></span><span className="mt-1 block">Choose an area in the panel or directly on the image.</span></div>
     </aside>
   )
 }
@@ -179,8 +251,53 @@ function ProductsPanel({ selectedProduct, setSelectedProduct }) {
 
 function Workspace({ room, onChangeRoom }) {
   const [panel, setPanel] = useState('points')
-  const [activeSurface, setActiveSurface] = useState(1)
+  const [areas, setAreas] = useState([])
+  const [activeAreaId, setActiveAreaId] = useState(null)
+  const [isAddingArea, setIsAddingArea] = useState(false)
+  const [pendingArea, setPendingArea] = useState(null)
+  const [draftName, setDraftName] = useState('Area 01')
+  const [draftType, setDraftType] = useState('Wall')
   const [selectedProduct, setSelectedProduct] = useState(PRODUCTS[0])
+
+  const startAddingArea = () => {
+    if (areas.length >= 6) return
+    setPanel('points')
+    setIsAddingArea(true)
+    setActiveAreaId(null)
+    setPendingArea(null)
+    setDraftName(`Area ${String(areas.length + 1).padStart(2, '0')}`)
+    setDraftType('Wall')
+  }
+
+  const cancelAddingArea = () => {
+    setIsAddingArea(false)
+    setPendingArea(null)
+  }
+
+  const handleRoomClick = (event) => {
+    if (!isAddingArea) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const x = ((event.clientX - bounds.left) / bounds.width) * 100
+    const y = ((event.clientY - bounds.top) / bounds.height) * 100
+    setPendingArea({ x, y })
+  }
+
+  const saveArea = () => {
+    if (!pendingArea || !draftName.trim() || areas.length >= 6) return
+    const nextArea = {
+      id: `area-${Date.now()}`,
+      name: draftName.trim(),
+      type: draftType,
+      x: pendingArea.x,
+      y: pendingArea.y,
+    }
+    setAreas((currentAreas) => [...currentAreas, nextArea])
+    setActiveAreaId(nextArea.id)
+    setIsAddingArea(false)
+    setPendingArea(null)
+  }
+
+  const activeArea = areas.find((area) => area.id === activeAreaId) ?? null
 
   return (
     <div className="grid h-screen grid-rows-[72px_minmax(0,1fr)] overflow-hidden border-t-[5px] border-[#333] bg-[#f1f3f4] font-sans text-[#242424]">
@@ -188,12 +305,47 @@ function Workspace({ room, onChangeRoom }) {
 
       <main className="grid min-h-0 grid-cols-[58px_310px_minmax(0,1fr)] max-lg:grid-cols-[58px_260px_minmax(0,1fr)] max-md:grid-cols-[52px_minmax(0,1fr)]">
         <aside className="z-20 flex min-h-0 flex-col items-center bg-[#242424]"><ActivityButton active={panel === 'points'} icon="points" label="Surface points" onClick={() => setPanel('points')} /><ActivityButton active={panel === 'products'} icon="products" label="Products" onClick={() => setPanel('products')} /><div className="mt-auto w-full border-t border-white/10"><ActivityButton icon="adjust" label="Settings" /></div></aside>
-        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel activeSurface={activeSurface} setActiveSurface={setActiveSurface} /> : <ProductsPanel selectedProduct={selectedProduct} setSelectedProduct={setSelectedProduct} />}</div>
+        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} setActiveAreaId={setActiveAreaId} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} setSelectedProduct={setSelectedProduct} />}</div>
         <section className="relative grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)_58px] bg-[#f3f4f5] bg-[radial-gradient(#d0d0d0_0.7px,transparent_0.7px)] bg-[length:7px_7px]">
           <div className="flex items-center justify-between px-5 text-[9px] text-[#888]"><span>Workspace / <strong className="text-[#333]">{room.name}</strong></span><span className="rounded-full bg-white px-3 py-1 shadow-sm">{panel === 'points' ? 'Surface areas' : 'Products'}</span></div>
-          <div className="flex min-h-0 items-center justify-center px-5 pb-5"><div className="relative max-h-full w-full max-w-[1180px] overflow-hidden rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)]"><img src={room.src} alt={room.name} className="block max-h-[calc(100vh-190px)] w-full object-cover" /></div></div>
+          <div className="flex min-h-0 items-center justify-center px-5 pb-5">
+            <div
+              onClick={handleRoomClick}
+              className={`relative max-h-full w-full max-w-[1180px] overflow-hidden rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)] ${isAddingArea ? 'cursor-crosshair ring-2 ring-[#ef4444] ring-offset-2' : ''}`}
+            >
+              <img src={room.src} alt={room.name} className="block max-h-[calc(100vh-190px)] w-full select-none object-cover" draggable="false" />
+
+              {isAddingArea && !pendingArea && <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-[#222]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg">Click the image to place Area {String(areas.length + 1).padStart(2, '0')}</div>}
+
+              {areas.map((area, index) => {
+                const selected = area.id === activeAreaId
+                return (
+                  <button
+                    key={area.id}
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); setPanel('points'); setActiveAreaId(area.id) }}
+                    style={{ left: `${area.x}%`, top: `${area.y}%` }}
+                    className={`group absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white px-3 py-1.5 text-[8px] font-bold text-white shadow-[0_4px_14px_rgba(0,0,0,.35)] transition hover:scale-105 ${selected ? 'bg-[#ef4444] ring-4 ring-[#ef4444]/25' : 'bg-[#242424]/90'}`}
+                    aria-label={`Select ${area.name}`}
+                  >
+                    <span className="whitespace-nowrap">{index + 1}. {area.name}</span>
+                  </button>
+                )
+              })}
+
+              {pendingArea && (
+                <span
+                  style={{ left: `${pendingArea.x}%`, top: `${pendingArea.y}%` }}
+                  className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
+                >
+                  <span className="absolute left-1/2 top-1/2 size-9 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full bg-[#f59e0b]/45" />
+                  <span className="relative flex items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-[#f59e0b] px-3 py-1.5 text-[8px] font-bold text-white shadow-[0_4px_14px_rgba(0,0,0,.35)]"><Icon name="points" size={12} /> Temporary area</span>
+                </span>
+              )}
+            </div>
+          </div>
           <div className="grid grid-cols-[minmax(170px,240px)_minmax(0,1fr)] border-t border-[#ddd] bg-white">
-            <div className="flex min-w-0 items-center gap-3 border-r border-[#ddd] px-4"><span className="relative grid size-8 shrink-0 place-items-center rounded-lg bg-[#f2f2f2] text-[#333]"><Icon name={panel === 'points' ? 'layers' : 'products'} size={17} /><i className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-[#ef4444] text-[8px] not-italic text-white">1</i></span><span className="min-w-0"><small className="block text-[8px] text-[#888]">{panel === 'points' ? 'Selected surface' : 'Selected product'}</small><strong className="mt-0.5 block truncate text-[10px]">{panel === 'points' ? `Wall ${activeSurface.toString().padStart(2, '0')}` : selectedProduct.name}</strong></span></div>
+            <div className="flex min-w-0 items-center gap-3 border-r border-[#ddd] px-4"><span className="relative grid size-8 shrink-0 place-items-center rounded-lg bg-[#f2f2f2] text-[#333]"><Icon name={panel === 'points' ? 'layers' : 'products'} size={17} /><i className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-[#ef4444] text-[8px] not-italic text-white">{panel === 'points' ? areas.length : 1}</i></span><span className="min-w-0"><small className="block text-[8px] text-[#888]">{panel === 'points' ? 'Selected surface' : 'Selected product'}</small><strong className="mt-0.5 block truncate text-[10px]">{panel === 'points' ? (activeArea ? `${activeArea.name} · ${activeArea.type}` : 'No area selected') : selectedProduct.name}</strong></span></div>
             <div className="flex items-center justify-end gap-1 overflow-x-auto px-4 text-[10px]">
               <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="reset" size={17} /> Reset</button>
               <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="grout" size={17} /> Grout</button>
