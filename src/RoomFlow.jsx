@@ -262,6 +262,7 @@ function PointsPanel({
   maskStates,
   pointMode,
   onStartPoints,
+  onResetPoints,
   isAddingArea,
   pendingArea,
   draftName,
@@ -350,44 +351,25 @@ function PointsPanel({
 
           return (
             <div key={area.id} className={`border-b border-[#ededed] ${selected ? 'bg-[#fff0ef]' : 'bg-white hover:bg-[#fafafa]'}`}>
-              <div className="grid grid-cols-[45px_minmax(0,1fr)_auto] items-center gap-3 p-3">
-                <button type="button" onClick={() => onSelectArea(area)} className={`relative grid size-11 overflow-hidden rounded-lg text-white ${selectedProduct ? 'border border-[#ddd] bg-white' : selected ? 'place-items-center bg-[#ef4444]' : 'place-items-center bg-[#333]'}`}>
+              <div className="grid min-h-[92px] grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 p-3">
+                <button type="button" onClick={() => onSelectArea(area)} className={`relative grid size-14 overflow-hidden rounded-sm text-white ${selectedProduct ? 'border border-[#ddd] bg-white' : selected ? 'place-items-center bg-[#ef4444]' : 'place-items-center bg-[#333]'}`}>
                   {selectedProduct
                     ? <><img src={selectedProduct.src} alt={selectedProduct.name} className="size-full object-cover" /><span className="absolute bottom-0.5 right-0.5 grid size-4 place-items-center rounded bg-[#242424]/85 text-[7px] font-bold text-white">{areas.indexOf(area) + 1}</span></>
                     : <strong className="text-[11px]">{String(areas.indexOf(area) + 1).padStart(2, '0')}</strong>}
                 </button>
-                <button type="button" onClick={() => onSelectArea(area)} className="min-w-0 text-left">
-                  <strong className="block truncate text-[11px]">{area.name}</strong>
-                  <small className="mt-1 flex items-center gap-1 text-[9px] text-[#999]"><Icon name={area.type === 'Wall' ? 'wall' : 'grid'} size={12} /> {area.type} · {areaPoints.length}/4 points</small>
-                  {maskStates[area.id]?.status === 'loading' && <small className="mt-1 block text-[8px] font-semibold text-[#ef4444]">Generating mask…</small>}
-                  {maskReady && <small className="mt-1 block text-[8px] font-semibold text-[#568638]">{selectedProduct ? `${selectedProduct.name} applied` : 'Mask ready'}</small>}
-                  {maskStates[area.id]?.status === 'error' && <small className="mt-1 block truncate text-[8px] font-semibold text-[#ef4444]" title={maskStates[area.id].error}>Mask failed</small>}
-                </button>
-                <button type="button" onClick={() => onDeleteArea(area.id)} className="grid size-7 place-items-center rounded-md text-[#999] transition hover:bg-white hover:text-[#ef4444]" aria-label={`Delete ${area.name}`} title="Delete area"><Icon name="trash" size={14} /></button>
-              </div>
-
-              {selected && (
-                <div className="border-t border-[#f2cfcc] px-3 pb-3 pt-2">
-                  <div className="flex items-center justify-between text-[8px]"><span className="font-semibold text-[#555]">Perspective points</span><span className="font-bold text-[#ef4444]">{areaPoints.length}/4</span></div>
-                  <div className="mt-2 grid grid-cols-4 gap-1">{[0, 1, 2, 3].map((pointIndex) => <span key={pointIndex} className={`h-1 rounded-full ${pointIndex < areaPoints.length ? 'bg-[#ef4444]' : 'bg-[#ddd]'}`} />)}</div>
-                  {areaPoints.length === 4 ? (
-                    <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                      <button type="button" onClick={() => onOpenProducts(area)} className="h-9 rounded-lg bg-[#242424] px-3 text-[9px] font-bold text-white hover:bg-black">{selectedProduct ? 'Change product' : 'Select product'}</button>
-                      <button type="button" onClick={onStartPoints} className="grid size-9 place-items-center rounded-lg border border-[#ddd] bg-white text-[#777] hover:border-[#ef4444] hover:text-[#ef4444]" aria-label="Reset perspective points" title="Reset points"><Icon name="reset" size={14} /></button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!maskReady}
-                      onClick={onStartPoints}
-                      className={`mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg text-[9px] font-bold transition disabled:cursor-not-allowed disabled:bg-[#e7e7e7] disabled:text-[#999] ${pointMode ? 'bg-[#242424] text-white' : 'bg-[#ef4444] text-white hover:bg-[#dc3838]'}`}
-                    >
-                      <Icon name="points" size={14} /> {pointMode ? `Click image · ${4 - areaPoints.length} left` : areaPoints.length ? 'Continue points' : 'Add points'}
-                    </button>
-                  )}
-                  {!maskReady && <p className="mt-2 text-[8px] text-[#888]">Wait until the area mask is ready.</p>}
+                <div className="min-w-0 self-stretch py-0.5">
+                  <button type="button" onClick={() => onSelectArea(area)} className="block w-full min-w-0 text-left"><strong className="block truncate text-[11px]">{area.name}</strong><small className="mt-1 flex items-center gap-1 text-[8px] text-[#999]"><Icon name={area.type === 'Wall' ? 'wall' : 'grid'} size={11} /> {area.type} · {areaPoints.length}/4</small></button>
+                  <div className="mt-1.5 flex items-center gap-0.5">
+                    <button type="button" onClick={() => onDeleteArea(area.id)} className="grid size-6 place-items-center rounded text-[#888] transition hover:bg-white hover:text-[#ef4444]" aria-label={`Delete ${area.name}`} title="Delete area"><Icon name="trash" size={13} /></button>
+                    <button type="button" disabled={!maskReady || areaPoints.length === 4} onClick={() => onStartPoints(area)} className={`grid size-6 place-items-center rounded transition disabled:cursor-not-allowed disabled:opacity-25 ${selected && pointMode ? 'bg-[#ef4444] text-white' : 'text-[#888] hover:bg-white hover:text-[#ef4444]'}`} aria-label={`Add points for ${area.name}`} title="Add points"><Icon name="points" size={13} /></button>
+                    <button type="button" disabled={areaPoints.length === 0} onClick={() => onResetPoints(area)} className="grid size-6 place-items-center rounded text-[#888] transition hover:bg-white hover:text-[#ef4444] disabled:cursor-not-allowed disabled:opacity-25" aria-label={`Reset points for ${area.name}`} title="Reset points"><Icon name="reset" size={13} /></button>
+                  </div>
+                  {maskStates[area.id]?.status === 'loading' && <small className="mt-1 block truncate text-[7px] font-semibold text-[#ef4444]">Generating mask…</small>}
+                  {maskReady && <small className="mt-1 block truncate text-[7px] font-semibold text-[#568638]">{selectedProduct ? `${selectedProduct.name} applied` : 'Mask ready'}</small>}
+                  {maskStates[area.id]?.status === 'error' && <small className="mt-1 block truncate text-[7px] font-semibold text-[#ef4444]" title={maskStates[area.id].error}>Mask failed</small>}
                 </div>
-              )}
+                <button type="button" disabled={areaPoints.length !== 4} onClick={() => onOpenProducts(area)} className={`min-w-[82px] rounded-full px-3 py-2 text-[8px] font-semibold transition disabled:cursor-not-allowed disabled:bg-[#eee] disabled:text-[#aaa] ${selectedProduct ? 'bg-[#f0e5e4] text-[#777] hover:bg-[#eadad8]' : 'bg-black text-white hover:bg-[#222]'}`}>{selectedProduct ? 'Change product' : '+ Select product'}</button>
+              </div>
             </div>
           )
         })}
@@ -607,15 +589,22 @@ function Workspace({ room, onChangeRoom }) {
     requestMaskForArea(area)
   }
 
-  const startAddingPoints = () => {
-    if (!activeAreaId || maskStates[activeAreaId]?.status !== 'success') return
-    const currentPoints = pointsByArea[activeAreaId] || []
-    if (currentPoints.length === 4) {
-      setPointsByArea((current) => ({ ...current, [activeAreaId]: [] }))
-    }
+  const startAddingPoints = (area) => {
+    const areaId = area?.id || activeAreaId
+    if (!areaId || maskStates[areaId]?.status !== 'success' || (pointsByArea[areaId] || []).length === 4) return
     clearWorkingCanvas()
-    clearAreaProduct(activeAreaId)
+    setActiveAreaId(areaId)
+    setPanel('points')
     setPointMode(true)
+  }
+
+  const resetPoints = (area) => {
+    const areaId = area?.id || activeAreaId
+    if (!areaId) return
+    clearWorkingCanvas()
+    clearAreaProduct(areaId)
+    setPointsByArea((current) => ({ ...current, [areaId]: [] }))
+    if (activeAreaId === areaId) setPointMode(false)
   }
 
   const openProductsForArea = (area) => {
@@ -691,7 +680,13 @@ function Workspace({ room, onChangeRoom }) {
       return
     }
 
-    if (!isAddingArea) return
+    if (!isAddingArea) {
+      clearWorkingCanvas()
+      setActiveAreaId(null)
+      setPointMode(false)
+      setPanel('points')
+      return
+    }
     const image = roomImageRef.current
     if (!image) return
     const bounds = image.getBoundingClientRect()
@@ -915,7 +910,7 @@ function Workspace({ room, onChangeRoom }) {
 
       <main className="grid min-h-0 grid-cols-[58px_310px_minmax(0,1fr)] max-lg:grid-cols-[58px_260px_minmax(0,1fr)] max-md:grid-cols-[52px_minmax(0,1fr)]">
         <aside className="z-20 flex min-h-0 flex-col items-center bg-[#242424]"><ActivityButton active={panel === 'points'} icon="points" label="Surface points" onClick={() => setPanel('points')} /><ActivityButton active={panel === 'products'} icon="products" label={canUseProducts ? 'Products' : 'Add 4 points first'} disabled={!canUseProducts} onClick={() => { setPointMode(false); setPanel('products') }} /><div className="mt-auto w-full border-t border-white/10"><ActivityButton icon="adjust" label="Settings" /></div></aside>
-        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} pointsByArea={pointsByArea} selectedProductsByArea={selectedProductsByArea} onSelectArea={selectArea} onDeleteArea={deleteArea} onOpenProducts={openProductsForArea} maskStates={maskStates} pointMode={pointMode} onStartPoints={startAddingPoints} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} applyingProduct={applyingProduct} onSelectProduct={applyProduct} isApplying={isApplying} activeArea={activeArea} applyError={applyError} />}</div>
+        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} pointsByArea={pointsByArea} selectedProductsByArea={selectedProductsByArea} onSelectArea={selectArea} onDeleteArea={deleteArea} onOpenProducts={openProductsForArea} maskStates={maskStates} pointMode={pointMode} onStartPoints={startAddingPoints} onResetPoints={resetPoints} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} applyingProduct={applyingProduct} onSelectProduct={applyProduct} isApplying={isApplying} activeArea={activeArea} applyError={applyError} />}</div>
         <section className="relative grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)_58px] bg-[#f3f4f5] bg-[radial-gradient(#d0d0d0_0.7px,transparent_0.7px)] bg-[length:7px_7px]">
           <div className="flex items-center justify-between px-5 text-[9px] text-[#888]"><span>Workspace / <strong className="text-[#333]">{room.name}</strong></span><span className="rounded-full bg-white px-3 py-1 shadow-sm">{panel === 'points' ? 'Surface areas' : 'Products'}</span></div>
           <div className="flex min-h-0 items-center justify-center px-5 pb-5">
