@@ -33,6 +33,43 @@ const PRODUCTS = [
 
 const normalizeAreaName = (name) => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
 
+function colorizeMask(source, width, height) {
+  return new Promise((resolve, reject) => {
+    const maskImage = new Image()
+
+    maskImage.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = width || maskImage.naturalWidth
+        canvas.height = height || maskImage.naturalHeight
+        const context = canvas.getContext('2d', { willReadFrequently: true })
+
+        context.drawImage(maskImage, 0, 0, canvas.width, canvas.height)
+        const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+
+        for (let index = 0; index < imageData.data.length; index += 4) {
+          const isSelected = imageData.data[index] > 127
+          imageData.data[index] = 239
+          imageData.data[index + 1] = 68
+          imageData.data[index + 2] = 68
+          imageData.data[index + 3] = isSelected ? 92 : 0
+        }
+
+        context.putImageData(imageData, 0, 0)
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob)
+          else reject(new Error('Mask overlay could not be created.'))
+        }, 'image/png')
+      } catch (error) {
+        reject(error)
+      }
+    }
+
+    maskImage.onerror = () => reject(new Error('Mask image could not be opened.'))
+    maskImage.src = source
+  })
+}
+
 function Icon({ name, size = 19 }) {
   const paths = {
     arrow: <path d="M5 12h14M14 7l5 5-5 5" />,
@@ -87,8 +124,21 @@ function RoomLibrary({ onContinue }) {
     if (uploadedUrlRef.current) URL.revokeObjectURL(uploadedUrlRef.current)
     const src = URL.createObjectURL(file)
     uploadedUrlRef.current = src
-    setSelectedRoom({ id: 'uploaded-room', name: file.name, category: 'Your upload', src, uploaded: true })
+    setSelectedRoom({ id: 'uploaded-room', name: file.name, category: 'Your upload', src, file, uploaded: true })
     event.target.value = ''
+  }
+
+  const continueWithRoom = () => {
+    if (!selectedRoom) return
+    if (selectedRoom.file) {
+      onContinue({
+        ...selectedRoom,
+        src: URL.createObjectURL(selectedRoom.file),
+        workspaceObjectUrl: true,
+      })
+      return
+    }
+    onContinue(selectedRoom)
   }
 
   return (
@@ -109,7 +159,7 @@ function RoomLibrary({ onContinue }) {
             <div className="mt-7 overflow-hidden rounded-2xl border border-[#dedede] bg-white shadow-[0_16px_40px_rgba(0,0,0,0.08)]">
               <div className="relative aspect-[1.48] overflow-hidden bg-[#eee]"><img className="h-full w-full object-cover" src={selectedRoom.src} alt={selectedRoom.name} /><span className="absolute left-3 top-3 rounded-full bg-[#222]/80 px-3 py-1.5 text-[8px] text-white">{selectedRoom.uploaded ? 'Your upload' : 'Selected room'}</span></div>
               <div className="flex items-center justify-between gap-3 px-4 py-3"><span className="min-w-0"><small className="block text-[8px] text-[#999]">Selected room</small><strong className="mt-1 block truncate text-[11px]">{selectedRoom.name}</strong></span><button onClick={() => setSelectedRoom(null)} className="text-[9px] text-[#777]">Change</button></div>
-              <button onClick={() => onContinue(selectedRoom)} className="mx-3 mb-3 flex h-11 w-[calc(100%-24px)] items-center justify-center gap-2 rounded-xl bg-[#ef4444] text-[10px] font-bold text-white transition hover:bg-[#dc3838]">Continue to workspace <Icon name="arrow" size={15} /></button>
+              <button onClick={continueWithRoom} className="mx-3 mb-3 flex h-11 w-[calc(100%-24px)] items-center justify-center gap-2 rounded-xl bg-[#ef4444] text-[10px] font-bold text-white transition hover:bg-[#dc3838]">Continue to workspace <Icon name="arrow" size={15} /></button>
             </div>
           ) : (
             <button onClick={() => uploadRef.current?.click()} className="mt-7 flex min-h-[300px] w-full flex-col items-center justify-center rounded-2xl border border-dashed border-[#cfd1d2] bg-white px-8 text-center transition hover:border-[#ef4444] hover:bg-[#fffafa]">
@@ -147,7 +197,8 @@ function ActivityButton({ active, icon, label, onClick }) {
 function PointsPanel({
   areas,
   activeAreaId,
-  setActiveAreaId,
+  onSelectArea,
+  maskStates,
   isAddingArea,
   pendingArea,
   draftName,
@@ -229,9 +280,9 @@ function PointsPanel({
           <div className="px-6 py-10 text-center"><span className="mx-auto grid size-11 place-items-center rounded-full bg-[#f3f3f3] text-[#999]"><Icon name="points" size={20} /></span><strong className="mt-3 block text-[10px]">No areas yet</strong><p className="mt-1 text-[8px] leading-4 text-[#999]">Click Add area to mark your first wall or floor.</p></div>
         )}
         {visibleAreas.map((area) => (
-          <button key={area.id} type="button" onClick={() => setActiveAreaId(area.id)} className={`grid w-full grid-cols-[45px_1fr_auto] items-center gap-3 border-b border-[#ededed] p-3 text-left ${activeAreaId === area.id ? 'bg-[#fff0ef]' : 'hover:bg-[#fafafa]'}`}>
+          <button key={area.id} type="button" onClick={() => onSelectArea(area)} className={`grid w-full grid-cols-[45px_1fr_auto] items-center gap-3 border-b border-[#ededed] p-3 text-left ${activeAreaId === area.id ? 'bg-[#fff0ef]' : 'hover:bg-[#fafafa]'}`}>
             <span className={`grid size-11 place-items-center rounded-lg text-white ${activeAreaId === area.id ? 'bg-[#ef4444]' : 'bg-[#333]'}`}><strong className="text-[11px]">{String(areas.indexOf(area) + 1).padStart(2, '0')}</strong></span>
-            <span><strong className="block truncate text-[11px]">{area.name}</strong><small className="mt-1 flex items-center gap-1 text-[9px] text-[#999]"><Icon name={area.type === 'Wall' ? 'wall' : 'grid'} size={12} /> {area.type}</small></span>
+            <span className="min-w-0"><strong className="block truncate text-[11px]">{area.name}</strong><small className="mt-1 flex items-center gap-1 text-[9px] text-[#999]"><Icon name={area.type === 'Wall' ? 'wall' : 'grid'} size={12} /> {area.type}</small>{maskStates[area.id]?.status === 'loading' && <small className="mt-1 block text-[8px] font-semibold text-[#ef4444]">Generating mask…</small>}{maskStates[area.id]?.status === 'success' && <small className="mt-1 block text-[8px] font-semibold text-[#568638]">Mask ready</small>}{maskStates[area.id]?.status === 'error' && <small className="mt-1 block truncate text-[8px] font-semibold text-[#ef4444]" title={maskStates[area.id].error}>Mask failed</small>}</span>
             <span className={`rounded-full px-2 py-1 text-[8px] font-bold text-white ${activeAreaId === area.id ? 'bg-[#ef4444]' : 'bg-[#242424]'}`}>{activeAreaId === area.id ? 'Selected' : `#${areas.indexOf(area) + 1}`}</span>
           </button>
         ))}
@@ -256,14 +307,148 @@ function ProductsPanel({ selectedProduct, setSelectedProduct }) {
 }
 
 function Workspace({ room, onChangeRoom }) {
+  const roomImageRef = useRef(null)
+  const roomFileRef = useRef(null)
+  const maskRequestRef = useRef(null)
+  const maskObjectUrlsRef = useRef(new Set())
   const [panel, setPanel] = useState('points')
   const [areas, setAreas] = useState([])
   const [activeAreaId, setActiveAreaId] = useState(null)
+  const [maskStates, setMaskStates] = useState({})
   const [isAddingArea, setIsAddingArea] = useState(false)
   const [pendingArea, setPendingArea] = useState(null)
   const [draftName, setDraftName] = useState('Area 01')
   const [draftType, setDraftType] = useState('Wall')
   const [selectedProduct, setSelectedProduct] = useState(PRODUCTS[0])
+
+  useEffect(() => () => {
+    maskRequestRef.current?.controller.abort()
+    maskObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+    if (room.workspaceObjectUrl) URL.revokeObjectURL(room.src)
+  }, [room.src, room.workspaceObjectUrl])
+
+  const getRoomFile = async () => {
+    if (room.file) return room.file
+    if (!roomFileRef.current) {
+      roomFileRef.current = fetch(room.src).then(async (response) => {
+        if (!response.ok) throw new Error('Room image could not be prepared for the mask API.')
+        const blob = await response.blob()
+        return new File([blob], `${room.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'room'}.jpg`, {
+          type: blob.type || 'image/jpeg',
+        })
+      })
+    }
+    return roomFileRef.current
+  }
+
+  const trackMaskUrl = (blob) => {
+    const url = URL.createObjectURL(blob)
+    maskObjectUrlsRef.current.add(url)
+    return url
+  }
+
+  const requestMaskForArea = async (area) => {
+    const currentRequest = maskRequestRef.current
+    if (currentRequest?.areaId === area.id) return
+    currentRequest?.controller.abort()
+    if (maskStates[area.id]?.status === 'success') return
+
+    const controller = new AbortController()
+    maskRequestRef.current = { areaId: area.id, controller }
+    setMaskStates((current) => ({
+      ...current,
+      [area.id]: { status: 'loading', url: '', error: '' },
+    }))
+
+    try {
+      const image = roomImageRef.current
+      if (!image?.naturalWidth || !image?.naturalHeight) {
+        throw new Error('Room image is not ready yet.')
+      }
+
+      const x = Math.max(0, Math.min(image.naturalWidth - 1, Math.floor((area.x / 100) * image.naturalWidth)))
+      const y = Math.max(0, Math.min(image.naturalHeight - 1, Math.floor((area.y / 100) * image.naturalHeight)))
+      const imageFile = await getRoomFile()
+      const formData = new FormData()
+      formData.append('image', imageFile)
+      formData.append('x', String(x))
+      formData.append('y', String(y))
+
+      const response = await fetch(import.meta.env.VITE_MASK_API_URL || '/api/mask', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        let message = `Mask API error (${response.status})`
+        try {
+          const body = await response.json()
+          message = body.detail || body.message || message
+        } catch {
+          // Keep the status-based error when the response is not JSON.
+        }
+        throw new Error(message)
+      }
+
+      const contentType = response.headers.get('content-type') || ''
+      let overlayUrl = ''
+
+      if (contentType.includes('application/json')) {
+        const data = await response.json()
+        const imageUrl = data.mask_url || data.image_url || data.url
+        const maskSource = data.mask
+          ? (data.mask.startsWith('data:') ? data.mask : `data:image/png;base64,${data.mask}`)
+          : imageUrl
+
+        if (!maskSource) throw new Error('Mask API did not return a mask image.')
+
+        try {
+          const overlayBlob = await colorizeMask(maskSource, data.image_width, data.image_height)
+          overlayUrl = trackMaskUrl(overlayBlob)
+        } catch (overlayError) {
+          if (!imageUrl) throw overlayError
+          overlayUrl = imageUrl
+        }
+      } else {
+        const maskBlob = await response.blob()
+        const rawMaskUrl = trackMaskUrl(maskBlob)
+        try {
+          const overlayBlob = await colorizeMask(rawMaskUrl, image.naturalWidth, image.naturalHeight)
+          overlayUrl = trackMaskUrl(overlayBlob)
+          URL.revokeObjectURL(rawMaskUrl)
+          maskObjectUrlsRef.current.delete(rawMaskUrl)
+        } catch {
+          overlayUrl = rawMaskUrl
+        }
+      }
+
+      setMaskStates((current) => ({
+        ...current,
+        [area.id]: { status: 'success', url: overlayUrl, error: '', x, y },
+      }))
+    } catch (requestError) {
+      if (requestError.name === 'AbortError') {
+        setMaskStates((current) => ({
+          ...current,
+          [area.id]: { status: 'idle', url: '', error: '' },
+        }))
+        return
+      }
+      setMaskStates((current) => ({
+        ...current,
+        [area.id]: { status: 'error', url: '', error: requestError.message || 'Mask could not be created.' },
+      }))
+    } finally {
+      if (maskRequestRef.current?.controller === controller) maskRequestRef.current = null
+    }
+  }
+
+  const selectArea = (area) => {
+    setPanel('points')
+    setActiveAreaId(area.id)
+    requestMaskForArea(area)
+  }
 
   const startAddingArea = () => {
     if (areas.length >= 6) return
@@ -299,12 +484,13 @@ function Workspace({ room, onChangeRoom }) {
       y: pendingArea.y,
     }
     setAreas((currentAreas) => [...currentAreas, nextArea])
-    setActiveAreaId(nextArea.id)
     setIsAddingArea(false)
     setPendingArea(null)
+    selectArea(nextArea)
   }
 
   const activeArea = areas.find((area) => area.id === activeAreaId) ?? null
+  const activeMaskState = activeArea ? maskStates[activeArea.id] : null
 
   return (
     <div className="grid h-screen grid-rows-[72px_minmax(0,1fr)] overflow-hidden border-t-[5px] border-[#333] bg-[#f1f3f4] font-sans text-[#242424]">
@@ -312,7 +498,7 @@ function Workspace({ room, onChangeRoom }) {
 
       <main className="grid min-h-0 grid-cols-[58px_310px_minmax(0,1fr)] max-lg:grid-cols-[58px_260px_minmax(0,1fr)] max-md:grid-cols-[52px_minmax(0,1fr)]">
         <aside className="z-20 flex min-h-0 flex-col items-center bg-[#242424]"><ActivityButton active={panel === 'points'} icon="points" label="Surface points" onClick={() => setPanel('points')} /><ActivityButton active={panel === 'products'} icon="products" label="Products" onClick={() => setPanel('products')} /><div className="mt-auto w-full border-t border-white/10"><ActivityButton icon="adjust" label="Settings" /></div></aside>
-        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} setActiveAreaId={setActiveAreaId} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} setSelectedProduct={setSelectedProduct} />}</div>
+        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} onSelectArea={selectArea} maskStates={maskStates} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} setSelectedProduct={setSelectedProduct} />}</div>
         <section className="relative grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)_58px] bg-[#f3f4f5] bg-[radial-gradient(#d0d0d0_0.7px,transparent_0.7px)] bg-[length:7px_7px]">
           <div className="flex items-center justify-between px-5 text-[9px] text-[#888]"><span>Workspace / <strong className="text-[#333]">{room.name}</strong></span><span className="rounded-full bg-white px-3 py-1 shadow-sm">{panel === 'points' ? 'Surface areas' : 'Products'}</span></div>
           <div className="flex min-h-0 items-center justify-center px-5 pb-5">
@@ -320,7 +506,19 @@ function Workspace({ room, onChangeRoom }) {
               onClick={handleRoomClick}
               className={`relative max-h-full w-full max-w-[1180px] overflow-hidden rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)] ${isAddingArea ? 'cursor-crosshair ring-2 ring-[#ef4444] ring-offset-2' : ''}`}
             >
-              <img src={room.src} alt={room.name} className="block max-h-[calc(100vh-190px)] w-full select-none object-cover" draggable="false" />
+              <img ref={roomImageRef} src={room.src} alt={room.name} className="block max-h-[calc(100vh-190px)] w-full select-none object-cover" draggable="false" />
+
+              {activeMaskState?.status === 'success' && (
+                <img src={activeMaskState.url} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-fill" />
+              )}
+
+              {activeMaskState?.status === 'loading' && (
+                <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full bg-[#242424]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg backdrop-blur-sm"><span className="size-3 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Generating {activeArea?.name} mask…</div>
+              )}
+
+              {activeMaskState?.status === 'error' && (
+                <div className="absolute bottom-4 left-1/2 z-20 max-w-[80%] -translate-x-1/2 rounded-lg bg-[#242424]/90 px-4 py-2 text-center text-[9px] font-semibold text-white shadow-lg" role="alert">{activeMaskState.error}</div>
+              )}
 
               {isAddingArea && !pendingArea && <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-[#222]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg">Click the image to place Area {String(areas.length + 1).padStart(2, '0')}</div>}
 
@@ -330,7 +528,7 @@ function Workspace({ room, onChangeRoom }) {
                   <button
                     key={area.id}
                     type="button"
-                    onClick={(event) => { event.stopPropagation(); setPanel('points'); setActiveAreaId(area.id) }}
+                    onClick={(event) => { event.stopPropagation(); selectArea(area) }}
                     style={{ left: `${area.x}%`, top: `${area.y}%` }}
                     className={`group absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white px-3 py-1.5 text-[8px] font-bold text-white shadow-[0_4px_14px_rgba(0,0,0,.35)] transition hover:scale-105 ${selected ? 'bg-[#ef4444] ring-4 ring-[#ef4444]/25' : 'bg-[#242424]/90'}`}
                     aria-label={`Select ${area.name}`}
