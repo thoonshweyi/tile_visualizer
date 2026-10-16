@@ -31,6 +31,8 @@ const PRODUCTS = [
   { id: 'pearl', name: 'Pearl Stone', sku: '602547', size: '600 × 600 mm', src: tile06 },
 ]
 
+const normalizeAreaName = (name) => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+
 function Icon({ name, size = 19 }) {
   const paths = {
     arrow: <path d="M5 12h14M14 7l5 5-5 5" />,
@@ -159,6 +161,7 @@ function PointsPanel({
   const [filter, setFilter] = useState('All')
   const visibleAreas = filter === 'All' ? areas : areas.filter((area) => area.type === filter)
   const areaLimitReached = areas.length >= 6
+  const duplicateName = Boolean(draftName.trim()) && areas.some((area) => normalizeAreaName(area.name) === normalizeAreaName(draftName))
 
   return (
     <aside className="flex h-full min-h-0 flex-col border-r border-[#dfdfdf] bg-white">
@@ -178,8 +181,8 @@ function PointsPanel({
         <div className="border-b border-[#e7e7e7] bg-[#fff8f7] p-3">
           <div className="rounded-xl border border-[#ffc8c4] bg-white p-3 shadow-sm">
             <div className="flex items-start gap-2">
-              <span className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white ${pendingArea ? 'bg-[#ef4444]' : 'animate-pulse bg-[#f59e0b]'}`}>{pendingArea ? '✓' : '1'}</span>
-              <div><strong className="block text-[10px]">{pendingArea ? 'Area position selected' : 'Click a position on the room'}</strong><small className="mt-1 block text-[8px] leading-4 text-[#888]">{pendingArea ? 'Set a name and surface type, then save.' : 'A temporary marker will appear where you click.'}</small></div>
+              <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-[#ef4444] text-[10px] font-bold text-white">{pendingArea ? '✓' : '1'}</span>
+              <div><strong className="block text-[10px]">{pendingArea ? 'Area position selected' : 'Click a position on the room'}</strong><small className="mt-1 block text-[8px] leading-4 text-[#888]">{pendingArea ? 'Set a name and surface type, then save.' : 'The marker will use the name entered below.'}</small></div>
             </div>
 
             <label className="mt-3 block text-[8px] font-bold uppercase tracking-[0.08em] text-[#666]">Name
@@ -187,9 +190,12 @@ function PointsPanel({
                 value={draftName}
                 onChange={(event) => setDraftName(event.target.value)}
                 maxLength={30}
-                className="mt-1.5 h-9 w-full rounded-lg border border-[#ddd] px-3 text-[10px] font-medium normal-case tracking-normal text-[#333] outline-none focus:border-[#ef4444]"
+                aria-invalid={duplicateName}
+                aria-describedby={duplicateName ? 'area-name-error' : undefined}
+                className={`mt-1.5 h-9 w-full rounded-lg border px-3 text-[10px] font-medium normal-case tracking-normal text-[#333] outline-none ${duplicateName ? 'border-[#ef4444] bg-[#fff8f7]' : 'border-[#ddd] focus:border-[#ef4444]'}`}
               />
             </label>
+            {duplicateName && <p id="area-name-error" className="mt-1.5 text-[8px] font-semibold normal-case tracking-normal text-[#ef4444]">This area name is already in use.</p>}
 
             <label className="mt-3 block text-[8px] font-bold uppercase tracking-[0.08em] text-[#666]">Type
               <select
@@ -204,7 +210,7 @@ function PointsPanel({
 
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button type="button" onClick={onCancelAdd} className="h-9 rounded-lg border border-[#ddd] text-[9px] font-semibold text-[#666] hover:bg-[#f5f5f5]">Cancel</button>
-              <button type="button" disabled={!pendingArea || !draftName.trim()} onClick={onSaveArea} className="h-9 rounded-lg bg-[#ef4444] text-[9px] font-bold text-white hover:bg-[#dc3838] disabled:cursor-not-allowed disabled:bg-[#d8d8d8]">Save area</button>
+              <button type="button" disabled={!pendingArea || !draftName.trim() || duplicateName} onClick={onSaveArea} className="h-9 rounded-lg bg-[#ef4444] text-[9px] font-bold text-white hover:bg-[#dc3838] disabled:cursor-not-allowed disabled:bg-[#d8d8d8]">Save area</button>
             </div>
           </div>
         </div>
@@ -283,7 +289,8 @@ function Workspace({ room, onChangeRoom }) {
   }
 
   const saveArea = () => {
-    if (!pendingArea || !draftName.trim() || areas.length >= 6) return
+    const duplicateName = areas.some((area) => normalizeAreaName(area.name) === normalizeAreaName(draftName))
+    if (!pendingArea || !draftName.trim() || duplicateName || areas.length >= 6) return
     const nextArea = {
       id: `area-${Date.now()}`,
       name: draftName.trim(),
@@ -317,7 +324,7 @@ function Workspace({ room, onChangeRoom }) {
 
               {isAddingArea && !pendingArea && <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-[#222]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg">Click the image to place Area {String(areas.length + 1).padStart(2, '0')}</div>}
 
-              {areas.map((area, index) => {
+              {areas.map((area) => {
                 const selected = area.id === activeAreaId
                 return (
                   <button
@@ -328,7 +335,7 @@ function Workspace({ room, onChangeRoom }) {
                     className={`group absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white px-3 py-1.5 text-[8px] font-bold text-white shadow-[0_4px_14px_rgba(0,0,0,.35)] transition hover:scale-105 ${selected ? 'bg-[#ef4444] ring-4 ring-[#ef4444]/25' : 'bg-[#242424]/90'}`}
                     aria-label={`Select ${area.name}`}
                   >
-                    <span className="whitespace-nowrap">{index + 1}. {area.name}</span>
+                    <span className="whitespace-nowrap">{area.name}</span>
                   </button>
                 )
               })}
@@ -338,8 +345,7 @@ function Workspace({ room, onChangeRoom }) {
                   style={{ left: `${pendingArea.x}%`, top: `${pendingArea.y}%` }}
                   className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
                 >
-                  <span className="absolute left-1/2 top-1/2 size-9 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full bg-[#f59e0b]/45" />
-                  <span className="relative flex items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-[#f59e0b] px-3 py-1.5 text-[8px] font-bold text-white shadow-[0_4px_14px_rgba(0,0,0,.35)]"><Icon name="points" size={12} /> Temporary area</span>
+                  <span className="relative flex items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-[#ef4444] px-3 py-1.5 text-[8px] font-bold text-white shadow-[0_4px_14px_rgba(0,0,0,.28)] ring-4 ring-[#ef4444]/20"><Icon name="points" size={12} /> {draftName.trim() || `Area ${String(areas.length + 1).padStart(2, '0')}`}</span>
                 </span>
               )}
             </div>
