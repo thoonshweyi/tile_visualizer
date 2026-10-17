@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import ActivityButton from './ActivityButton'
 import Brand from './Brand'
+import { DEFAULT_TEXTURE_ADJUSTMENT } from './flowData'
 import { colorizeMask, distance, getOpenCv, loadImage, normalizeAreaName, orderPoints } from './flowUtils'
 import Icon from './Icon'
 import PointsPanel from './PointsPanel'
@@ -14,6 +15,9 @@ export default function Workspace({ room, onChangeRoom }) {
   const roomFileRef = useRef(null)
   const maskRequestRef = useRef(null)
   const maskObjectUrlsRef = useRef(new Set())
+  const textureAdjustmentTimersRef = useRef({})
+  const applyRequestRef = useRef(0)
+  const applyVersionByAreaRef = useRef({})
   const [panel, setPanel] = useState('points')
   const [areas, setAreas] = useState([])
   const [activeAreaId, setActiveAreaId] = useState(null)
@@ -27,12 +31,14 @@ export default function Workspace({ room, onChangeRoom }) {
   const [draftType, setDraftType] = useState('Wall')
   const [selectedProductsByArea, setSelectedProductsByArea] = useState({})
   const [appliedPreviewsByArea, setAppliedPreviewsByArea] = useState({})
+  const [textureAdjustmentsByArea, setTextureAdjustmentsByArea] = useState({})
   const [applyingProduct, setApplyingProduct] = useState(null)
   const [isApplying, setIsApplying] = useState(false)
   const [applyError, setApplyError] = useState('')
 
   useEffect(() => () => {
     maskRequestRef.current?.controller.abort()
+    Object.values(textureAdjustmentTimersRef.current).forEach((timer) => window.clearTimeout(timer))
     maskObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
   }, [])
 
@@ -166,12 +172,20 @@ export default function Workspace({ room, onChangeRoom }) {
 
   const clearAreaProduct = (areaId) => {
     if (!areaId) return
+    window.clearTimeout(textureAdjustmentTimersRef.current[areaId])
+    delete textureAdjustmentTimersRef.current[areaId]
+    applyVersionByAreaRef.current[areaId] = (applyVersionByAreaRef.current[areaId] || 0) + 1
     setSelectedProductsByArea((current) => {
       const next = { ...current }
       delete next[areaId]
       return next
     })
     setAppliedPreviewsByArea((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
+    setTextureAdjustmentsByArea((current) => {
       const next = { ...current }
       delete next[areaId]
       return next
@@ -374,14 +388,20 @@ export default function Workspace({ room, onChangeRoom }) {
     selectArea(nextArea)
   }
 
-  const applyProduct = async (product) => {
-    const areaId = activeAreaId
+  const applyProduct = async (product, targetAreaId = activeAreaId, adjustmentOverride) => {
+    const areaId = targetAreaId
     const points = areaId ? pointsByArea[areaId] || [] : []
     const maskSource = areaId ? maskStates[areaId]?.maskSource : ''
     if (!areaId || points.length !== 4 || !maskSource) {
       setApplyError('Select an area and add four points before choosing a product.')
       return
     }
+
+    const adjustment = adjustmentOverride || textureAdjustmentsByArea[areaId] || DEFAULT_TEXTURE_ADJUSTMENT
+    const requestId = applyRequestRef.current + 1
+    applyRequestRef.current = requestId
+    const areaVersion = (applyVersionByAreaRef.current[areaId] || 0) + 1
+    applyVersionByAreaRef.current[areaId] = areaVersion
 
     setApplyingProduct(product)
     setIsApplying(true)
@@ -416,16 +436,28 @@ export default function Workspace({ room, onChangeRoom }) {
       textureCanvas.width = textureWidth
       textureCanvas.height = textureHeight
       const textureContext = textureCanvas.getContext('2d')
-      const tileSize = 120
+      const tileSize = 120 * adjustment.scale
       const tileRatio = tileImage.naturalWidth / tileImage.naturalHeight
       const cellWidth = tileSize
       const cellHeight = tileSize / tileRatio
-      const grout = 3
+      const grout = Math.max(1.5, 3 * adjustment.scale)
+      const rotation = (adjustment.rotation * Math.PI) / 180
+      const offsetX = (adjustment.offsetX / 100) * cellWidth
+      const offsetY = (adjustment.offsetY / 100) * cellHeight
+      const patternPadding = Math.ceil(Math.hypot(textureWidth, textureHeight))
+      const startX = -patternPadding
+      const startY = -patternPadding
+      const endX = textureWidth + patternPadding
+      const endY = textureHeight + patternPadding
 
       textureContext.fillStyle = '#dedbd2'
       textureContext.fillRect(0, 0, textureWidth, textureHeight)
-      for (let y = 0; y < textureHeight; y += cellHeight) {
-        for (let x = 0; x < textureWidth; x += cellWidth) {
+      textureContext.save()
+      textureContext.translate((textureWidth / 2) + offsetX, (textureHeight / 2) + offsetY)
+      textureContext.rotate(rotation)
+      textureContext.translate(-(textureWidth / 2), -(textureHeight / 2))
+      for (let y = startY; y < endY; y += cellHeight) {
+        for (let x = startX; x < endX; x += cellWidth) {
           textureContext.drawImage(
             tileImage,
             x + grout,
@@ -435,6 +467,7 @@ export default function Workspace({ room, onChangeRoom }) {
           )
         }
       }
+      textureContext.restore()
 
       tileMat = cv.imread(textureCanvas)
       warpedMat = cv.Mat.zeros(height, width, cv.CV_8UC4)
@@ -483,6 +516,8 @@ export default function Workspace({ room, onChangeRoom }) {
       outputContext.globalCompositeOperation = 'source-over'
       const previewUrl = canvas.toDataURL('image/png')
 
+      if (applyVersionByAreaRef.current[areaId] !== areaVersion) return
+
       setPointsByArea((current) => ({
         ...current,
         [areaId]: [topLeft, topRight, bottomRight, bottomLeft].map((point) => ({
@@ -492,6 +527,7 @@ export default function Workspace({ room, onChangeRoom }) {
         })),
       }))
       setSelectedProductsByArea((current) => ({ ...current, [areaId]: product }))
+      setTextureAdjustmentsByArea((current) => ({ ...current, [areaId]: adjustment }))
       setAppliedPreviewsByArea((current) => ({
         ...current,
         [areaId]: { productId: product.id, url: previewUrl },
@@ -506,9 +542,33 @@ export default function Workspace({ room, onChangeRoom }) {
       sourcePoints?.delete()
       destinationPoints?.delete()
       transform?.delete()
-      setIsApplying(false)
-      setApplyingProduct(null)
+      if (applyRequestRef.current === requestId) {
+        setIsApplying(false)
+        setApplyingProduct(null)
+      }
     }
+  }
+
+  const updateTextureAdjustment = (area, key, value) => {
+    const currentAdjustment = textureAdjustmentsByArea[area.id] || DEFAULT_TEXTURE_ADJUSTMENT
+    const nextAdjustment = { ...currentAdjustment, [key]: value }
+    setTextureAdjustmentsByArea((current) => ({ ...current, [area.id]: nextAdjustment }))
+
+    const product = selectedProductsByArea[area.id]
+    if (!product) return
+    window.clearTimeout(textureAdjustmentTimersRef.current[area.id])
+    textureAdjustmentTimersRef.current[area.id] = window.setTimeout(() => {
+      applyProduct(product, area.id, nextAdjustment)
+    }, 120)
+  }
+
+  const resetTextureAdjustment = (area) => {
+    window.clearTimeout(textureAdjustmentTimersRef.current[area.id])
+    delete textureAdjustmentTimersRef.current[area.id]
+    const nextAdjustment = { ...DEFAULT_TEXTURE_ADJUSTMENT }
+    setTextureAdjustmentsByArea((current) => ({ ...current, [area.id]: nextAdjustment }))
+    const product = selectedProductsByArea[area.id]
+    if (product) applyProduct(product, area.id, nextAdjustment)
   }
 
   const activeArea = areas.find((area) => area.id === activeAreaId) ?? null
@@ -528,7 +588,7 @@ export default function Workspace({ room, onChangeRoom }) {
 
       <main className="grid min-h-0 grid-cols-[58px_310px_minmax(0,1fr)] max-lg:grid-cols-[58px_260px_minmax(0,1fr)] max-md:grid-cols-[52px_minmax(0,1fr)]">
         <aside className="z-20 flex min-h-0 flex-col items-center bg-[#242424]"><ActivityButton active={panel === 'points'} icon="points" label="Surface points" onClick={() => setPanel('points')} /><ActivityButton active={panel === 'products'} icon="products" label={canUseProducts ? 'Products' : 'Add 4 points first'} disabled={!canUseProducts} onClick={() => { setPointMode(false); setPanel('products') }} /><div className="mt-auto w-full border-t border-white/10"><ActivityButton icon="adjust" label="Settings" /></div></aside>
-        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} pointsByArea={pointsByArea} selectedProductsByArea={selectedProductsByArea} onSelectArea={selectArea} onDeleteArea={deleteArea} onOpenProducts={openProductsForArea} maskStates={maskStates} pointMode={pointMode} onStartPoints={startAddingPoints} onResetPoints={resetPoints} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} applyingProduct={applyingProduct} onSelectProduct={applyProduct} isApplying={isApplying} activeArea={activeArea} applyError={applyError} />}</div>
+        <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} pointsByArea={pointsByArea} selectedProductsByArea={selectedProductsByArea} textureAdjustmentsByArea={textureAdjustmentsByArea} onSelectArea={selectArea} onDeleteArea={deleteArea} onOpenProducts={openProductsForArea} maskStates={maskStates} pointMode={pointMode} onStartPoints={startAddingPoints} onResetPoints={resetPoints} onTextureAdjustmentChange={updateTextureAdjustment} onResetTextureAdjustment={resetTextureAdjustment} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} applyingProduct={applyingProduct} onSelectProduct={applyProduct} isApplying={isApplying} activeArea={activeArea} applyError={applyError} />}</div>
         <section className="relative grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)_58px] bg-[#f3f4f5] bg-[radial-gradient(#d0d0d0_0.7px,transparent_0.7px)] bg-[length:7px_7px]">
           <div className="flex items-center justify-between px-5 text-[9px] text-[#888]"><span>Workspace / <strong className="text-[#333]">{room.name}</strong></span><span className="rounded-full bg-white px-3 py-1 shadow-sm">{panel === 'points' ? 'Surface areas' : 'Products'}</span></div>
           <div className="flex min-h-0 items-center justify-center px-5 pb-5">

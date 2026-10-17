@@ -1,13 +1,35 @@
 import { useState } from 'react'
 
 import { normalizeAreaName } from './flowUtils'
+import { DEFAULT_TEXTURE_ADJUSTMENT } from './flowData'
 import Icon from './Icon'
+
+function TextureSlider({ label, value, displayValue, min, max, step, onChange }) {
+  return (
+    <label className="block">
+      <span className="mb-1 flex items-center justify-between text-[8px] font-semibold text-[#555]">
+        <span>{label}</span>
+        <span className="tabular-nums text-[#222]">{displayValue}</span>
+      </span>
+      <input
+        type="range"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="h-1 w-full cursor-pointer accent-[#ef4444]"
+      />
+    </label>
+  )
+}
 
 export default function PointsPanel({
   areas,
   activeAreaId,
   pointsByArea,
   selectedProductsByArea,
+  textureAdjustmentsByArea,
   onSelectArea,
   onDeleteArea,
   onOpenProducts,
@@ -15,6 +37,8 @@ export default function PointsPanel({
   pointMode,
   onStartPoints,
   onResetPoints,
+  onTextureAdjustmentChange,
+  onResetTextureAdjustment,
   isAddingArea,
   pendingArea,
   draftName,
@@ -74,6 +98,7 @@ export default function PointsPanel({
           const selected = activeAreaId === area.id
           const areaPoints = pointsByArea[area.id] || []
           const selectedProduct = selectedProductsByArea[area.id]
+          const adjustment = textureAdjustmentsByArea[area.id] || DEFAULT_TEXTURE_ADJUSTMENT
           const maskReady = maskStates[area.id]?.status === 'success'
 
           return (
@@ -95,6 +120,23 @@ export default function PointsPanel({
                 </div>
                 <button type="button" disabled={areaPoints.length !== 4} onClick={() => onOpenProducts(area)} className={`min-w-[82px] rounded-full px-3 py-2 text-[8px] font-semibold transition disabled:cursor-not-allowed disabled:bg-[#eee] disabled:text-[#aaa] ${selectedProduct ? 'bg-[#f0e5e4] text-[#777] hover:bg-[#eadad8]' : 'bg-black text-white hover:bg-[#222]'}`}>{selectedProduct ? 'Change product' : '+ Select product'}</button>
               </div>
+              {selected && selectedProduct && areaPoints.length === 4 && (
+                <div className="border-t border-[#f1cfcc] px-3 pb-3 pt-2.5">
+                  <div className="mb-2.5 flex items-center justify-between">
+                    <div>
+                      <strong className="block text-[9px]">Texture adjustment</strong>
+                      <small className="mt-0.5 block text-[7px] text-[#999]">Adjust only {area.name}</small>
+                    </div>
+                    <button type="button" onClick={() => onResetTextureAdjustment(area)} className="grid size-6 place-items-center rounded text-[#888] hover:bg-white hover:text-[#ef4444]" aria-label={`Reset texture adjustment for ${area.name}`} title="Reset texture adjustment"><Icon name="reset" size={13} /></button>
+                  </div>
+                  <div className="grid gap-2.5 rounded-lg border border-[#ecd8d6] bg-white/80 p-2.5">
+                    <TextureSlider label="Scale" value={adjustment.scale} displayValue={`${Math.round(adjustment.scale * 100)}%`} min={0.5} max={2} step={0.05} onChange={(value) => onTextureAdjustmentChange(area, 'scale', value)} />
+                    <TextureSlider label="Rotate" value={adjustment.rotation} displayValue={`${adjustment.rotation}°`} min={-45} max={45} step={1} onChange={(value) => onTextureAdjustmentChange(area, 'rotation', value)} />
+                    <TextureSlider label="Move X" value={adjustment.offsetX} displayValue={`${adjustment.offsetX}%`} min={-100} max={100} step={1} onChange={(value) => onTextureAdjustmentChange(area, 'offsetX', value)} />
+                    <TextureSlider label="Move Y" value={adjustment.offsetY} displayValue={`${adjustment.offsetY}%`} min={-100} max={100} step={1} onChange={(value) => onTextureAdjustmentChange(area, 'offsetY', value)} />
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}

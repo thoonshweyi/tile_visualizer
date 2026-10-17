@@ -28,3 +28,10 @@ export const PRODUCTS = [
   { id: 'travertine', name: 'Travertine', sku: '443478', size: '600 × 1200 mm', src: tile05, badge: 'Popular' },
   { id: 'pearl', name: 'Pearl Stone', sku: '602547', size: '600 × 600 mm', src: tile06 },
 ]
+
+export const DEFAULT_TEXTURE_ADJUSTMENT = {
+  scale: 1,
+  rotation: 0,
+  offsetX: 0,
+  offsetY: 0,
+}
