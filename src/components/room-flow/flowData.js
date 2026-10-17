@@ -35,3 +35,8 @@ export const DEFAULT_TEXTURE_ADJUSTMENT = {
   offsetX: 0,
   offsetY: 0,
 }
+
+export const DEFAULT_GROUT_SETTING = {
+  gap: 3,
+  color: '#dedbd2',
+}

@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from 'react'
 import ActivityButton from './ActivityButton'
 import Brand from './Brand'
 import CompareSlider from './CompareSlider'
-import { DEFAULT_TEXTURE_ADJUSTMENT } from './flowData'
+import { DEFAULT_GROUT_SETTING, DEFAULT_TEXTURE_ADJUSTMENT } from './flowData'
 import { colorizeMask, distance, getOpenCv, loadImage, normalizeAreaName, orderPoints } from './flowUtils'
 import Icon from './Icon'
+import GroutSettingsModal from './GroutSettingsModal'
 import PointsPanel from './PointsPanel'
 import ProductsPanel from './ProductsPanel'
 
@@ -33,6 +34,7 @@ export default function Workspace({ room, onChangeRoom }) {
   const [selectedProductsByArea, setSelectedProductsByArea] = useState({})
   const [appliedPreviewsByArea, setAppliedPreviewsByArea] = useState({})
   const [textureAdjustmentsByArea, setTextureAdjustmentsByArea] = useState({})
+  const [groutSettingsByArea, setGroutSettingsByArea] = useState({})
   const [applyingProduct, setApplyingProduct] = useState(null)
   const [isApplying, setIsApplying] = useState(false)
   const [applyError, setApplyError] = useState('')
@@ -40,6 +42,7 @@ export default function Workspace({ room, onChangeRoom }) {
   const [downloadError, setDownloadError] = useState('')
   const [compareMode, setCompareMode] = useState(false)
   const [comparePosition, setComparePosition] = useState(50)
+  const [groutModalOpen, setGroutModalOpen] = useState(false)
 
   useEffect(() => () => {
     maskRequestRef.current?.controller.abort()
@@ -178,6 +181,7 @@ export default function Workspace({ room, onChangeRoom }) {
   const clearAreaProduct = (areaId) => {
     if (!areaId) return
     setCompareMode(false)
+    setGroutModalOpen(false)
     window.clearTimeout(textureAdjustmentTimersRef.current[areaId])
     delete textureAdjustmentTimersRef.current[areaId]
     applyVersionByAreaRef.current[areaId] = (applyVersionByAreaRef.current[areaId] || 0) + 1
@@ -192,6 +196,11 @@ export default function Workspace({ room, onChangeRoom }) {
       return next
     })
     setTextureAdjustmentsByArea((current) => {
+      const next = { ...current }
+      delete next[areaId]
+      return next
+    })
+    setGroutSettingsByArea((current) => {
       const next = { ...current }
       delete next[areaId]
       return next
@@ -397,7 +406,7 @@ export default function Workspace({ room, onChangeRoom }) {
     selectArea(nextArea)
   }
 
-  const applyProduct = async (product, targetAreaId = activeAreaId, adjustmentOverride) => {
+  const applyProduct = async (product, targetAreaId = activeAreaId, adjustmentOverride, groutOverride) => {
     const areaId = targetAreaId
     const points = areaId ? pointsByArea[areaId] || [] : []
     const maskSource = areaId ? maskStates[areaId]?.maskSource : ''
@@ -407,6 +416,7 @@ export default function Workspace({ room, onChangeRoom }) {
     }
 
     const adjustment = adjustmentOverride || textureAdjustmentsByArea[areaId] || DEFAULT_TEXTURE_ADJUSTMENT
+    const groutSetting = groutOverride || groutSettingsByArea[areaId] || DEFAULT_GROUT_SETTING
     const requestId = applyRequestRef.current + 1
     applyRequestRef.current = requestId
     const areaVersion = (applyVersionByAreaRef.current[areaId] || 0) + 1
@@ -449,7 +459,7 @@ export default function Workspace({ room, onChangeRoom }) {
       const tileRatio = tileImage.naturalWidth / tileImage.naturalHeight
       const cellWidth = tileSize
       const cellHeight = tileSize / tileRatio
-      const grout = Math.max(1.5, 3 * adjustment.scale)
+      const grout = Math.max(0, groutSetting.gap * adjustment.scale)
       const rotation = (adjustment.rotation * Math.PI) / 180
       const offsetX = (adjustment.offsetX / 100) * cellWidth
       const offsetY = (adjustment.offsetY / 100) * cellHeight
@@ -459,7 +469,7 @@ export default function Workspace({ room, onChangeRoom }) {
       cellCanvas.height = Math.max(1, Math.round(cellHeight))
       const cellContext = cellCanvas.getContext('2d')
 
-      cellContext.fillStyle = '#dedbd2'
+      cellContext.fillStyle = groutSetting.color
       cellContext.fillRect(0, 0, cellCanvas.width, cellCanvas.height)
       cellContext.drawImage(
         tileImage,
@@ -469,7 +479,7 @@ export default function Workspace({ room, onChangeRoom }) {
         Math.max(1, cellCanvas.height - grout * 2),
       )
 
-      textureContext.fillStyle = '#dedbd2'
+      textureContext.fillStyle = groutSetting.color
       textureContext.fillRect(0, 0, textureWidth, textureHeight)
       textureContext.save()
       textureContext.translate((textureWidth / 2) + offsetX, (textureHeight / 2) + offsetY)
@@ -543,6 +553,7 @@ export default function Workspace({ room, onChangeRoom }) {
       }))
       setSelectedProductsByArea((current) => ({ ...current, [areaId]: product }))
       setTextureAdjustmentsByArea((current) => ({ ...current, [areaId]: adjustment }))
+      setGroutSettingsByArea((current) => ({ ...current, [areaId]: groutSetting }))
       setAppliedPreviewsByArea((current) => ({
         ...current,
         [areaId]: { productId: product.id, url: previewUrl },
@@ -584,6 +595,41 @@ export default function Workspace({ room, onChangeRoom }) {
     setTextureAdjustmentsByArea((current) => ({ ...current, [area.id]: nextAdjustment }))
     const product = selectedProductsByArea[area.id]
     if (product) applyProduct(product, area.id, nextAdjustment)
+  }
+
+  const updateGroutSetting = (key, value) => {
+    if (!activeAreaId) return
+    const currentSetting = groutSettingsByArea[activeAreaId] || DEFAULT_GROUT_SETTING
+    const nextSetting = { ...currentSetting, [key]: value }
+    setGroutSettingsByArea((current) => ({ ...current, [activeAreaId]: nextSetting }))
+
+    const product = selectedProductsByArea[activeAreaId]
+    if (!product) return
+    window.clearTimeout(textureAdjustmentTimersRef.current[activeAreaId])
+    textureAdjustmentTimersRef.current[activeAreaId] = window.setTimeout(() => {
+      applyProduct(
+        product,
+        activeAreaId,
+        textureAdjustmentsByArea[activeAreaId] || DEFAULT_TEXTURE_ADJUSTMENT,
+        nextSetting,
+      )
+    }, 120)
+  }
+
+  const resetGroutSetting = () => {
+    if (!activeAreaId) return
+    window.clearTimeout(textureAdjustmentTimersRef.current[activeAreaId])
+    const nextSetting = { ...DEFAULT_GROUT_SETTING }
+    setGroutSettingsByArea((current) => ({ ...current, [activeAreaId]: nextSetting }))
+    const product = selectedProductsByArea[activeAreaId]
+    if (product) {
+      applyProduct(
+        product,
+        activeAreaId,
+        textureAdjustmentsByArea[activeAreaId] || DEFAULT_TEXTURE_ADJUSTMENT,
+        nextSetting,
+      )
+    }
   }
 
   const downloadRoom = async () => {
@@ -651,6 +697,14 @@ export default function Workspace({ room, onChangeRoom }) {
   const activePoints = activeAreaId ? pointsByArea[activeAreaId] || [] : []
   const selectedProduct = activeAreaId ? selectedProductsByArea[activeAreaId] || null : null
   const canUseProducts = Boolean(activeArea && activeMaskState?.status === 'success' && activePoints.length === 4)
+  const canOpenGrout = Boolean(activeArea && selectedProduct && activePoints.length === 4 && !isApplying)
+  const activeGroutSetting = activeAreaId ? groutSettingsByArea[activeAreaId] || DEFAULT_GROUT_SETTING : DEFAULT_GROUT_SETTING
+
+  const openGroutSettings = () => {
+    if (!canOpenGrout) return
+    setCompareMode(false)
+    setGroutModalOpen(true)
+  }
   const roomAspectRatio = roomImageSize.width / roomImageSize.height
   const roomFrameStyle = {
     aspectRatio: `${roomImageSize.width} / ${roomImageSize.height}`,
@@ -768,7 +822,7 @@ export default function Workspace({ room, onChangeRoom }) {
             <div className="flex min-w-0 items-center gap-3 border-r border-[#ddd] px-4"><span className="relative grid size-8 shrink-0 place-items-center rounded-lg bg-[#f2f2f2] text-[#333]"><Icon name={panel === 'points' ? 'layers' : 'products'} size={17} /><i className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-[#ef4444] text-[8px] not-italic text-white">{panel === 'points' ? areas.length : selectedProduct ? 1 : 0}</i></span><span className="min-w-0"><small className="block text-[8px] text-[#888]">{panel === 'points' ? 'Selected surface' : 'Selected product'}</small><strong className="mt-0.5 block truncate text-[10px]">{panel === 'points' ? (activeArea ? `${activeArea.name} · ${activeArea.type}` : 'No area selected') : (selectedProduct?.name || 'Choose a product')}</strong></span></div>
             <div className="flex items-center justify-end gap-1 overflow-x-auto px-4 text-[10px]">
               <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="reset" size={17} /> Reset</button>
-              <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="grout" size={17} /> Grout</button>
+              <button type="button" onClick={openGroutSettings} disabled={!canOpenGrout} className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5] disabled:cursor-not-allowed disabled:opacity-35"><Icon name="grout" size={17} /> Grout</button>
               <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="layout" size={17} /> Layout</button>
               <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="applied" size={17} /> Applied products</button>
               <button type="button" onClick={toggleCompare} disabled={!compareMode && !canCompare} className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 disabled:cursor-not-allowed disabled:opacity-35 ${compareMode ? 'bg-[#242424] text-white' : 'text-[#333] hover:bg-[#f5f5f5]'}`}><Icon name="compare" size={17} /> {compareMode ? 'Close compare' : 'Compare'}</button>
@@ -776,6 +830,15 @@ export default function Workspace({ room, onChangeRoom }) {
           </div>
         </section>
       </main>
+      {groutModalOpen && activeArea && (
+        <GroutSettingsModal
+          areaName={activeArea.name}
+          setting={activeGroutSetting}
+          onChange={updateGroutSetting}
+          onReset={resetGroutSetting}
+          onClose={() => setGroutModalOpen(false)}
+        />
+      )}
     </div>
   )
 }
