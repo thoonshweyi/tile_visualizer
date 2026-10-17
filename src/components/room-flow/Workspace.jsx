@@ -445,10 +445,20 @@ export default function Workspace({ room, onChangeRoom }) {
       const offsetX = (adjustment.offsetX / 100) * cellWidth
       const offsetY = (adjustment.offsetY / 100) * cellHeight
       const patternPadding = Math.ceil(Math.hypot(textureWidth, textureHeight))
-      const startX = -patternPadding
-      const startY = -patternPadding
-      const endX = textureWidth + patternPadding
-      const endY = textureHeight + patternPadding
+      const cellCanvas = document.createElement('canvas')
+      cellCanvas.width = Math.max(1, Math.round(cellWidth))
+      cellCanvas.height = Math.max(1, Math.round(cellHeight))
+      const cellContext = cellCanvas.getContext('2d')
+
+      cellContext.fillStyle = '#dedbd2'
+      cellContext.fillRect(0, 0, cellCanvas.width, cellCanvas.height)
+      cellContext.drawImage(
+        tileImage,
+        grout,
+        grout,
+        Math.max(1, cellCanvas.width - grout * 2),
+        Math.max(1, cellCanvas.height - grout * 2),
+      )
 
       textureContext.fillStyle = '#dedbd2'
       textureContext.fillRect(0, 0, textureWidth, textureHeight)
@@ -456,17 +466,13 @@ export default function Workspace({ room, onChangeRoom }) {
       textureContext.translate((textureWidth / 2) + offsetX, (textureHeight / 2) + offsetY)
       textureContext.rotate(rotation)
       textureContext.translate(-(textureWidth / 2), -(textureHeight / 2))
-      for (let y = startY; y < endY; y += cellHeight) {
-        for (let x = startX; x < endX; x += cellWidth) {
-          textureContext.drawImage(
-            tileImage,
-            x + grout,
-            y + grout,
-            cellWidth - grout * 2,
-            cellHeight - grout * 2,
-          )
-        }
-      }
+      textureContext.fillStyle = textureContext.createPattern(cellCanvas, 'repeat')
+      textureContext.fillRect(
+        -patternPadding,
+        -patternPadding,
+        textureWidth + patternPadding * 2,
+        textureHeight + patternPadding * 2,
+      )
       textureContext.restore()
 
       tileMat = cv.imread(textureCanvas)

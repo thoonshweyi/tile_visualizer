@@ -130,8 +130,8 @@ export default function PointsPanel({
                     <button type="button" onClick={() => onResetTextureAdjustment(area)} className="grid size-6 place-items-center rounded text-[#888] hover:bg-white hover:text-[#ef4444]" aria-label={`Reset texture adjustment for ${area.name}`} title="Reset texture adjustment"><Icon name="reset" size={13} /></button>
                   </div>
                   <div className="grid gap-2.5 rounded-lg border border-[#ecd8d6] bg-white/80 p-2.5">
-                    <TextureSlider label="Scale" value={adjustment.scale} displayValue={`${Math.round(adjustment.scale * 100)}%`} min={0.5} max={2} step={0.05} onChange={(value) => onTextureAdjustmentChange(area, 'scale', value)} />
-                    <TextureSlider label="Rotate" value={adjustment.rotation} displayValue={`${adjustment.rotation}°`} min={-45} max={45} step={1} onChange={(value) => onTextureAdjustmentChange(area, 'rotation', value)} />
+                    <TextureSlider label="Scale" value={adjustment.scale} displayValue={`${Math.round(adjustment.scale * 100)}%`} min={0.1} max={2} step={0.05} onChange={(value) => onTextureAdjustmentChange(area, 'scale', value)} />
+                    <TextureSlider label="Rotate" value={adjustment.rotation} displayValue={`${adjustment.rotation}°`} min={-180} max={180} step={1} onChange={(value) => onTextureAdjustmentChange(area, 'rotation', value)} />
                     <TextureSlider label="Move X" value={adjustment.offsetX} displayValue={`${adjustment.offsetX}%`} min={-100} max={100} step={1} onChange={(value) => onTextureAdjustmentChange(area, 'offsetX', value)} />
                     <TextureSlider label="Move Y" value={adjustment.offsetY} displayValue={`${adjustment.offsetY}%`} min={-100} max={100} step={1} onChange={(value) => onTextureAdjustmentChange(area, 'offsetY', value)} />
                   </div>
