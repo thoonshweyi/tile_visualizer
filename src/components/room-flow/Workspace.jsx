@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import ActivityButton from './ActivityButton'
 import Brand from './Brand'
+import CompareSlider from './CompareSlider'
 import { DEFAULT_TEXTURE_ADJUSTMENT } from './flowData'
 import { colorizeMask, distance, getOpenCv, loadImage, normalizeAreaName, orderPoints } from './flowUtils'
 import Icon from './Icon'
@@ -37,6 +38,8 @@ export default function Workspace({ room, onChangeRoom }) {
   const [applyError, setApplyError] = useState('')
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState('')
+  const [compareMode, setCompareMode] = useState(false)
+  const [comparePosition, setComparePosition] = useState(50)
 
   useEffect(() => () => {
     maskRequestRef.current?.controller.abort()
@@ -174,6 +177,7 @@ export default function Workspace({ room, onChangeRoom }) {
 
   const clearAreaProduct = (areaId) => {
     if (!areaId) return
+    setCompareMode(false)
     window.clearTimeout(textureAdjustmentTimersRef.current[areaId])
     delete textureAdjustmentTimersRef.current[areaId]
     applyVersionByAreaRef.current[areaId] = (applyVersionByAreaRef.current[areaId] || 0) + 1
@@ -629,6 +633,19 @@ export default function Workspace({ room, onChangeRoom }) {
     }
   }
 
+  const hasAppliedPreviews = areas.some((area) => Boolean(appliedPreviewsByArea[area.id]))
+  const canCompare = hasAppliedPreviews && !isApplying && !isAddingArea && !pointMode
+
+  const toggleCompare = () => {
+    if (compareMode) {
+      setCompareMode(false)
+      return
+    }
+    if (!canCompare) return
+    setComparePosition(50)
+    setCompareMode(true)
+  }
+
   const activeArea = areas.find((area) => area.id === activeAreaId) ?? null
   const activeMaskState = activeArea ? maskStates[activeArea.id] : null
   const activePoints = activeAreaId ? pointsByArea[activeAreaId] || [] : []
@@ -642,7 +659,7 @@ export default function Workspace({ room, onChangeRoom }) {
 
   return (
     <div className="grid h-screen grid-rows-[72px_minmax(0,1fr)] overflow-hidden border-t-[5px] border-[#333] bg-[#f1f3f4] font-sans text-[#242424]">
-      <header className="grid grid-cols-[auto_1fr_auto] items-center border-b border-[#ddd] bg-white px-5 max-md:px-3"><Brand /><nav className="flex items-center justify-center gap-1 max-md:hidden"><button className="rounded-lg px-3 py-2 text-[11px] text-[#555]">53%</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="compare" size={17} /> Compare</button><button type="button" onClick={downloadRoom} disabled={isDownloading || isApplying} className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4] disabled:cursor-wait disabled:opacity-45"><Icon name="download" size={17} /> {isDownloading ? 'Preparing…' : 'Download'}</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="share" size={17} /> Share</button><button onClick={changeRoom} className="ml-2 flex items-center gap-2 rounded-full border border-[#ef4444] px-4 py-2 text-[11px] font-semibold text-[#ef4444]"><Icon name="plus" size={16} /> New room</button></nav><button className="justify-self-end rounded-full bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#666]">Exit</button></header>
+      <header className="grid grid-cols-[auto_1fr_auto] items-center border-b border-[#ddd] bg-white px-5 max-md:px-3"><Brand /><nav className="flex items-center justify-center gap-1 max-md:hidden"><button className="rounded-lg px-3 py-2 text-[11px] text-[#555]">53%</button><button type="button" onClick={toggleCompare} disabled={!compareMode && !canCompare} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] transition disabled:cursor-not-allowed disabled:opacity-35 ${compareMode ? 'bg-[#242424] text-white' : 'text-[#444] hover:bg-[#f4f4f4]'}`}><Icon name="compare" size={17} /> {compareMode ? 'Close compare' : 'Compare'}</button><button type="button" onClick={downloadRoom} disabled={isDownloading || isApplying} className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4] disabled:cursor-wait disabled:opacity-45"><Icon name="download" size={17} /> {isDownloading ? 'Preparing…' : 'Download'}</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="share" size={17} /> Share</button><button onClick={changeRoom} className="ml-2 flex items-center gap-2 rounded-full border border-[#ef4444] px-4 py-2 text-[11px] font-semibold text-[#ef4444]"><Icon name="plus" size={16} /> New room</button></nav><button className="justify-self-end rounded-full bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#666]">Exit</button></header>
 
       <main className="grid min-h-0 grid-cols-[58px_310px_minmax(0,1fr)] max-lg:grid-cols-[58px_260px_minmax(0,1fr)] max-md:grid-cols-[52px_minmax(0,1fr)]">
         <aside className="z-20 flex min-h-0 flex-col items-center bg-[#242424]"><ActivityButton active={panel === 'points'} icon="points" label="Surface points" onClick={() => setPanel('points')} /><ActivityButton active={panel === 'products'} icon="products" label={canUseProducts ? 'Products' : 'Add 4 points first'} disabled={!canUseProducts} onClick={() => { setPointMode(false); setPanel('products') }} /><div className="mt-auto w-full border-t border-white/10"><ActivityButton icon="adjust" label="Settings" /></div></aside>
@@ -668,17 +685,19 @@ export default function Workspace({ room, onChangeRoom }) {
                 draggable="false"
               />
 
-              {activeMaskState?.status === 'success' && !appliedPreviewsByArea[activeAreaId] && (
+              {!compareMode && activeMaskState?.status === 'success' && !appliedPreviewsByArea[activeAreaId] && (
                 <img src={activeMaskState.url} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1] h-full w-full object-contain" />
               )}
 
               {areas.map((area) => appliedPreviewsByArea[area.id] && (
-                <img key={area.id} src={appliedPreviewsByArea[area.id].url} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain" />
+                <img key={area.id} src={appliedPreviewsByArea[area.id].url} alt="" aria-hidden="true" style={compareMode ? { clipPath: `inset(0 0 0 ${comparePosition}%)` } : undefined} className="pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain" />
               ))}
 
-              <canvas ref={tileCanvasRef} className="pointer-events-none absolute inset-0 z-[3] h-full w-full" aria-hidden="true" />
+              <canvas ref={tileCanvasRef} className={`pointer-events-none absolute inset-0 z-[3] h-full w-full ${compareMode ? 'hidden' : ''}`} aria-hidden="true" />
 
-              {activePoints.length > 1 && (
+              {compareMode && <CompareSlider value={comparePosition} onChange={setComparePosition} />}
+
+              {!compareMode && activePoints.length > 1 && (
                 <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full overflow-visible" viewBox={`0 0 ${roomImageSize.width} ${roomImageSize.height}`} preserveAspectRatio="none" aria-hidden="true">
                   {activePoints.length === 4
                     ? <polygon points={activePoints.map(({ x, y }) => `${x},${y}`).join(' ')} fill="rgba(239,68,68,0.08)" stroke="#ef4444" strokeWidth="5" strokeDasharray="14 10" />
@@ -686,7 +705,7 @@ export default function Workspace({ room, onChangeRoom }) {
                 </svg>
               )}
 
-              {activePoints.map((point, index) => (
+              {!compareMode && activePoints.map((point, index) => (
                 <button
                   key={`${activeAreaId}-${index}`}
                   type="button"
@@ -703,23 +722,23 @@ export default function Workspace({ room, onChangeRoom }) {
                 </button>
               ))}
 
-              {activeMaskState?.status === 'loading' && (
+              {!compareMode && activeMaskState?.status === 'loading' && (
                 <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full bg-[#242424]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg backdrop-blur-sm"><span className="size-3 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Generating {activeArea?.name} mask…</div>
               )}
 
-              {isApplying && (
+              {!compareMode && isApplying && (
                 <div className="pointer-events-none absolute left-1/2 top-1/2 z-40 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full bg-[#242424]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg backdrop-blur-sm"><span className="size-3 animate-spin rounded-full border-2 border-white/35 border-t-white" /> Applying {applyingProduct?.name}…</div>
               )}
 
-              {activeMaskState?.status === 'error' && (
+              {!compareMode && activeMaskState?.status === 'error' && (
                 <div className="absolute bottom-4 left-1/2 z-20 max-w-[80%] -translate-x-1/2 rounded-lg bg-[#242424]/90 px-4 py-2 text-center text-[9px] font-semibold text-white shadow-lg" role="alert">{activeMaskState.error}</div>
               )}
 
-              {isAddingArea && !pendingArea && <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-[#222]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg">Click the image to place Area {String(areas.length + 1).padStart(2, '0')}</div>}
+              {!compareMode && isAddingArea && !pendingArea && <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-[#222]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg">Click the image to place Area {String(areas.length + 1).padStart(2, '0')}</div>}
 
-              {pointMode && <div className="pointer-events-none absolute left-1/2 top-4 z-40 -translate-x-1/2 rounded-full bg-[#222]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg">Add perspective points · {activePoints.length}/4</div>}
+              {!compareMode && pointMode && <div className="pointer-events-none absolute left-1/2 top-4 z-40 -translate-x-1/2 rounded-full bg-[#222]/85 px-4 py-2 text-[9px] font-semibold text-white shadow-lg">Add perspective points · {activePoints.length}/4</div>}
 
-              {areas.map((area) => {
+              {!compareMode && areas.map((area) => {
                 const selected = area.id === activeAreaId
                 return (
                   <button
@@ -735,7 +754,7 @@ export default function Workspace({ room, onChangeRoom }) {
                 )
               })}
 
-              {pendingArea && (
+              {!compareMode && pendingArea && (
                 <span
                   style={{ left: `${pendingArea.x}%`, top: `${pendingArea.y}%` }}
                   className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
@@ -752,7 +771,7 @@ export default function Workspace({ room, onChangeRoom }) {
               <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="grout" size={17} /> Grout</button>
               <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="layout" size={17} /> Layout</button>
               <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="applied" size={17} /> Applied products</button>
-              <button className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[#333] hover:bg-[#f5f5f5]"><Icon name="compare" size={17} /> Compare</button>
+              <button type="button" onClick={toggleCompare} disabled={!compareMode && !canCompare} className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 disabled:cursor-not-allowed disabled:opacity-35 ${compareMode ? 'bg-[#242424] text-white' : 'text-[#333] hover:bg-[#f5f5f5]'}`}><Icon name="compare" size={17} /> {compareMode ? 'Close compare' : 'Compare'}</button>
             </div>
           </div>
         </section>
