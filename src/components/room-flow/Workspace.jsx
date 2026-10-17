@@ -35,6 +35,8 @@ export default function Workspace({ room, onChangeRoom }) {
   const [applyingProduct, setApplyingProduct] = useState(null)
   const [isApplying, setIsApplying] = useState(false)
   const [applyError, setApplyError] = useState('')
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState('')
 
   useEffect(() => () => {
     maskRequestRef.current?.controller.abort()
@@ -580,6 +582,53 @@ export default function Workspace({ room, onChangeRoom }) {
     if (product) applyProduct(product, area.id, nextAdjustment)
   }
 
+  const downloadRoom = async () => {
+    if (isDownloading || isApplying) return
+    setIsDownloading(true)
+    setDownloadError('')
+
+    try {
+      const roomImage = roomImageRef.current
+      if (!roomImage?.naturalWidth || !roomImage?.naturalHeight) {
+        throw new Error('Room image is not ready to download.')
+      }
+
+      const downloadCanvas = document.createElement('canvas')
+      downloadCanvas.width = roomImage.naturalWidth
+      downloadCanvas.height = roomImage.naturalHeight
+      const downloadContext = downloadCanvas.getContext('2d')
+      downloadContext.drawImage(roomImage, 0, 0, downloadCanvas.width, downloadCanvas.height)
+
+      const previewSources = areas
+        .map((area) => appliedPreviewsByArea[area.id]?.url)
+        .filter(Boolean)
+      const previewImages = await Promise.all(previewSources.map((source) => loadImage(source)))
+      previewImages.forEach((previewImage) => {
+        downloadContext.drawImage(previewImage, 0, 0, downloadCanvas.width, downloadCanvas.height)
+      })
+
+      const downloadBlob = await new Promise((resolve, reject) => {
+        downloadCanvas.toBlob((blob) => {
+          if (blob) resolve(blob)
+          else reject(new Error('The download image could not be created.'))
+        }, 'image/png')
+      })
+      const downloadUrl = URL.createObjectURL(downloadBlob)
+      const downloadLink = document.createElement('a')
+      const safeRoomName = room.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'room'
+      downloadLink.href = downloadUrl
+      downloadLink.download = `${safeRoomName}-tile-preview.png`
+      document.body.appendChild(downloadLink)
+      downloadLink.click()
+      downloadLink.remove()
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000)
+    } catch (error) {
+      setDownloadError(error.message || 'The room preview could not be downloaded.')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   const activeArea = areas.find((area) => area.id === activeAreaId) ?? null
   const activeMaskState = activeArea ? maskStates[activeArea.id] : null
   const activePoints = activeAreaId ? pointsByArea[activeAreaId] || [] : []
@@ -593,12 +642,13 @@ export default function Workspace({ room, onChangeRoom }) {
 
   return (
     <div className="grid h-screen grid-rows-[72px_minmax(0,1fr)] overflow-hidden border-t-[5px] border-[#333] bg-[#f1f3f4] font-sans text-[#242424]">
-      <header className="grid grid-cols-[auto_1fr_auto] items-center border-b border-[#ddd] bg-white px-5 max-md:px-3"><Brand /><nav className="flex items-center justify-center gap-1 max-md:hidden"><button className="rounded-lg px-3 py-2 text-[11px] text-[#555]">53%</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="compare" size={17} /> Compare</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="download" size={17} /> Download</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="share" size={17} /> Share</button><button onClick={changeRoom} className="ml-2 flex items-center gap-2 rounded-full border border-[#ef4444] px-4 py-2 text-[11px] font-semibold text-[#ef4444]"><Icon name="plus" size={16} /> New room</button></nav><button className="justify-self-end rounded-full bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#666]">Exit</button></header>
+      <header className="grid grid-cols-[auto_1fr_auto] items-center border-b border-[#ddd] bg-white px-5 max-md:px-3"><Brand /><nav className="flex items-center justify-center gap-1 max-md:hidden"><button className="rounded-lg px-3 py-2 text-[11px] text-[#555]">53%</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="compare" size={17} /> Compare</button><button type="button" onClick={downloadRoom} disabled={isDownloading || isApplying} className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4] disabled:cursor-wait disabled:opacity-45"><Icon name="download" size={17} /> {isDownloading ? 'Preparing…' : 'Download'}</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="share" size={17} /> Share</button><button onClick={changeRoom} className="ml-2 flex items-center gap-2 rounded-full border border-[#ef4444] px-4 py-2 text-[11px] font-semibold text-[#ef4444]"><Icon name="plus" size={16} /> New room</button></nav><button className="justify-self-end rounded-full bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#666]">Exit</button></header>
 
       <main className="grid min-h-0 grid-cols-[58px_310px_minmax(0,1fr)] max-lg:grid-cols-[58px_260px_minmax(0,1fr)] max-md:grid-cols-[52px_minmax(0,1fr)]">
         <aside className="z-20 flex min-h-0 flex-col items-center bg-[#242424]"><ActivityButton active={panel === 'points'} icon="points" label="Surface points" onClick={() => setPanel('points')} /><ActivityButton active={panel === 'products'} icon="products" label={canUseProducts ? 'Products' : 'Add 4 points first'} disabled={!canUseProducts} onClick={() => { setPointMode(false); setPanel('products') }} /><div className="mt-auto w-full border-t border-white/10"><ActivityButton icon="adjust" label="Settings" /></div></aside>
         <div className="min-h-0 max-md:absolute max-md:bottom-0 max-md:left-[52px] max-md:top-[72px] max-md:z-10 max-md:w-[280px] max-md:shadow-xl">{panel === 'points' ? <PointsPanel areas={areas} activeAreaId={activeAreaId} pointsByArea={pointsByArea} selectedProductsByArea={selectedProductsByArea} textureAdjustmentsByArea={textureAdjustmentsByArea} onSelectArea={selectArea} onDeleteArea={deleteArea} onOpenProducts={openProductsForArea} maskStates={maskStates} pointMode={pointMode} onStartPoints={startAddingPoints} onResetPoints={resetPoints} onTextureAdjustmentChange={updateTextureAdjustment} onResetTextureAdjustment={resetTextureAdjustment} isAddingArea={isAddingArea} pendingArea={pendingArea} draftName={draftName} setDraftName={setDraftName} draftType={draftType} setDraftType={setDraftType} onStartAdd={startAddingArea} onCancelAdd={cancelAddingArea} onSaveArea={saveArea} /> : <ProductsPanel selectedProduct={selectedProduct} applyingProduct={applyingProduct} onSelectProduct={applyProduct} isApplying={isApplying} activeArea={activeArea} applyError={applyError} />}</div>
         <section className="relative grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)_58px] bg-[#f3f4f5] bg-[radial-gradient(#d0d0d0_0.7px,transparent_0.7px)] bg-[length:7px_7px]">
+          {downloadError && <div className="absolute right-5 top-12 z-50 max-w-xs rounded-lg bg-[#242424] px-4 py-2 text-[9px] font-semibold text-white shadow-lg" role="alert">{downloadError}</div>}
           <div className="flex items-center justify-between px-5 text-[9px] text-[#888]"><span>Workspace / <strong className="text-[#333]">{room.name}</strong></span><span className="rounded-full bg-white px-3 py-1 shadow-sm">{panel === 'points' ? 'Surface areas' : 'Products'}</span></div>
           <div className="flex min-h-0 items-center justify-center px-5 pb-5">
             <div
