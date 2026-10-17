@@ -192,19 +192,22 @@ export default function Workspace({ room, onChangeRoom }) {
     })
   }
 
-  const getPerspectivePoint = (clientX, clientY) => {
+  const getPerspectivePoint = (clientX, clientY, allowOutside = false) => {
     const image = roomImageRef.current
     if (!image) return null
     const bounds = image.getBoundingClientRect()
-    if (
+    const isOutside = (
       clientX < bounds.left
       || clientX > bounds.right
       || clientY < bounds.top
       || clientY > bounds.bottom
-    ) return null
+    )
+    if (isOutside && !allowOutside) return null
 
-    const left = (clientX - bounds.left) / bounds.width
-    const top = (clientY - bounds.top) / bounds.height
+    const rawLeft = (clientX - bounds.left) / bounds.width
+    const rawTop = (clientY - bounds.top) / bounds.height
+    const left = allowOutside ? Math.max(-0.5, Math.min(1.5, rawLeft)) : rawLeft
+    const top = allowOutside ? Math.max(-0.5, Math.min(1.5, rawTop)) : rawTop
     return {
       x: Math.round(left * image.naturalWidth),
       y: Math.round(top * image.naturalHeight),
@@ -346,7 +349,7 @@ export default function Workspace({ room, onChangeRoom }) {
     const dragging = dragPointRef.current
     if (!dragging) return
     event.stopPropagation()
-    const nextPoint = getPerspectivePoint(event.clientX, event.clientY)
+    const nextPoint = getPerspectivePoint(event.clientX, event.clientY, true)
     if (!nextPoint) return
     setPointsByArea((current) => ({
       ...current,
@@ -601,7 +604,7 @@ export default function Workspace({ room, onChangeRoom }) {
             <div
               onClick={handleRoomClick}
               style={roomFrameStyle}
-              className={`relative max-h-full max-w-[1180px] overflow-hidden rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)] ${(isAddingArea || pointMode) ? 'cursor-crosshair ring-2 ring-[#ef4444] ring-offset-2' : ''}`}
+              className={`relative max-h-full max-w-[1180px] overflow-visible rounded-sm bg-[#ddd] shadow-[0_18px_50px_rgba(0,0,0,0.16)] ${(isAddingArea || pointMode) ? 'cursor-crosshair ring-2 ring-[#ef4444] ring-offset-2' : ''}`}
             >
               <img
                 ref={roomImageRef}
@@ -611,7 +614,7 @@ export default function Workspace({ room, onChangeRoom }) {
                   width: event.currentTarget.naturalWidth,
                   height: event.currentTarget.naturalHeight,
                 })}
-                className="absolute inset-0 block h-full w-full select-none object-contain"
+                className="absolute inset-0 block h-full w-full select-none rounded-sm object-contain"
                 draggable="false"
               />
 
@@ -626,7 +629,7 @@ export default function Workspace({ room, onChangeRoom }) {
               <canvas ref={tileCanvasRef} className="pointer-events-none absolute inset-0 z-[3] h-full w-full" aria-hidden="true" />
 
               {activePoints.length > 1 && (
-                <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" viewBox={`0 0 ${roomImageSize.width} ${roomImageSize.height}`} preserveAspectRatio="none" aria-hidden="true">
+                <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full overflow-visible" viewBox={`0 0 ${roomImageSize.width} ${roomImageSize.height}`} preserveAspectRatio="none" aria-hidden="true">
                   {activePoints.length === 4
                     ? <polygon points={activePoints.map(({ x, y }) => `${x},${y}`).join(' ')} fill="rgba(239,68,68,0.08)" stroke="#ef4444" strokeWidth="5" strokeDasharray="14 10" />
                     : <polyline points={activePoints.map(({ x, y }) => `${x},${y}`).join(' ')} fill="none" stroke="#ef4444" strokeWidth="5" strokeDasharray="14 10" />}
