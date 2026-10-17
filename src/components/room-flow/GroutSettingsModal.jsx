@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react'
+
 const GROUT_COLORS = [
   '#ffffff', '#e7e0d8', '#dddcd3', '#d1d2b8', '#bd9e77',
   '#aa916d', '#e4e6e1', '#f7f5ef', '#d9d1d1', '#c7c7c7',
@@ -7,24 +9,110 @@ const GROUT_COLORS = [
 ]
 
 export default function GroutSettingsModal({ areaName, setting, onChange, onReset, onClose }) {
+  const panelRef = useRef(null)
+  const dragRef = useRef(null)
+  const [entered, setEntered] = useState(false)
+  const [position, setPosition] = useState(() => ({
+    x: Math.max(12, window.innerWidth - 384),
+    y: Math.max(12, (window.innerHeight - 560) / 2),
+  }))
+
+  const constrainPosition = (nextPosition) => {
+    const panel = panelRef.current
+    if (!panel) return nextPosition
+    const margin = 12
+    return {
+      x: Math.min(Math.max(margin, nextPosition.x), Math.max(margin, window.innerWidth - panel.offsetWidth - margin)),
+      y: Math.min(Math.max(margin, nextPosition.y), Math.max(margin, window.innerHeight - panel.offsetHeight - margin)),
+    }
+  }
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setPosition((current) => constrainPosition(current))
+      setEntered(true)
+    })
+    const handleResize = () => setPosition((current) => constrainPosition(current))
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('resize', handleResize)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
+
+  const startDragging = (event) => {
+    if (event.target.closest('button')) return
+    const panel = panelRef.current
+    if (!panel) return
+    const bounds = panel.getBoundingClientRect()
+    dragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - bounds.left,
+      offsetY: event.clientY - bounds.top,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const movePanel = (event) => {
+    const dragging = dragRef.current
+    if (!dragging || dragging.pointerId !== event.pointerId) return
+    setPosition(constrainPosition({
+      x: event.clientX - dragging.offsetX,
+      y: event.clientY - dragging.offsetY,
+    }))
+  }
+
+  const stopDragging = (event) => {
+    if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    dragRef.current = null
+  }
+
   return (
     <div
-      className="fixed inset-0 z-[100] grid place-items-center bg-[#242424]/45 p-5 backdrop-blur-[1px]"
+      className="fixed inset-0 z-[100] bg-[#242424]/45 backdrop-blur-[1px]"
       role="presentation"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <section className="w-full max-w-[360px] overflow-hidden rounded-xl bg-white shadow-[0_24px_80px_rgba(0,0,0,.3)]" role="dialog" aria-modal="true" aria-labelledby="grout-settings-title">
-        <header className="flex items-center justify-between border-b border-[#e6e6e6] px-5 py-4">
-          <div>
-            <h2 id="grout-settings-title" className="text-sm font-bold">Grout settings</h2>
-            <p className="mt-0.5 text-[8px] text-[#888]">Adjusting {areaName}</p>
+      <section
+        ref={panelRef}
+        style={{
+          left: position.x,
+          top: position.y,
+          transform: entered ? 'translateX(0)' : 'translateX(calc(100% + 32px))',
+        }}
+        className="fixed flex max-h-[calc(100dvh-24px)] w-[min(360px,calc(100vw-24px))] flex-col overflow-hidden rounded-xl bg-white shadow-[0_24px_80px_rgba(0,0,0,.3)] transition-transform duration-300 ease-out"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="grout-settings-title"
+      >
+        <header
+          onPointerDown={startDragging}
+          onPointerMove={movePanel}
+          onPointerUp={stopDragging}
+          onPointerCancel={stopDragging}
+          className="flex touch-none select-none items-center justify-between border-b border-[#e6e6e6] px-5 py-4 cursor-grab active:cursor-grabbing"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-[#f2f2f2] text-[12px] tracking-[-0.18em] text-[#777]" aria-hidden="true">⠿</span>
+            <div className="min-w-0">
+              <h2 id="grout-settings-title" className="text-sm font-bold">Grout settings</h2>
+              <p className="mt-0.5 truncate text-[8px] text-[#888]">{areaName} · Drag panel to move</p>
+            </div>
           </div>
           <button type="button" onClick={onClose} className="grid size-8 place-items-center rounded-full text-lg text-[#777] hover:bg-[#f2f2f2] hover:text-[#222]" aria-label="Close grout settings">×</button>
         </header>
 
-        <div className="p-5">
+        <div className="min-h-0 overflow-y-auto p-5">
           <label className="block">
             <span className="mb-2 flex items-center justify-between text-[10px] font-semibold text-[#444]"><span>Gap</span><span className="tabular-nums">{setting.gap.toFixed(1)} px</span></span>
             <input type="range" min="0" max="16" step="0.5" value={setting.gap} onChange={(event) => onChange('gap', Number(event.target.value))} className="h-1.5 w-full cursor-pointer accent-[#ef4444]" />
