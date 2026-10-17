@@ -29,9 +29,11 @@ export default function RoomLibrary({ onContinue }) {
   const continueWithRoom = () => {
     if (!selectedRoom) return
     if (selectedRoom.file) {
+      const workspaceUrl = selectedRoom.src
+      uploadedUrlRef.current = null
       onContinue({
         ...selectedRoom,
-        src: URL.createObjectURL(selectedRoom.file),
+        src: workspaceUrl,
         workspaceObjectUrl: true,
       })
       return

@@ -34,8 +34,12 @@ export default function Workspace({ room, onChangeRoom }) {
   useEffect(() => () => {
     maskRequestRef.current?.controller.abort()
     maskObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+  }, [])
+
+  const changeRoom = () => {
     if (room.workspaceObjectUrl) URL.revokeObjectURL(room.src)
-  }, [room.src, room.workspaceObjectUrl])
+    onChangeRoom()
+  }
 
   const getRoomFile = async () => {
     if (room.file) return room.file
@@ -520,7 +524,7 @@ export default function Workspace({ room, onChangeRoom }) {
 
   return (
     <div className="grid h-screen grid-rows-[72px_minmax(0,1fr)] overflow-hidden border-t-[5px] border-[#333] bg-[#f1f3f4] font-sans text-[#242424]">
-      <header className="grid grid-cols-[auto_1fr_auto] items-center border-b border-[#ddd] bg-white px-5 max-md:px-3"><Brand /><nav className="flex items-center justify-center gap-1 max-md:hidden"><button className="rounded-lg px-3 py-2 text-[11px] text-[#555]">53%</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="compare" size={17} /> Compare</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="download" size={17} /> Download</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="share" size={17} /> Share</button><button onClick={onChangeRoom} className="ml-2 flex items-center gap-2 rounded-full border border-[#ef4444] px-4 py-2 text-[11px] font-semibold text-[#ef4444]"><Icon name="plus" size={16} /> New room</button></nav><button className="justify-self-end rounded-full bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#666]">Exit</button></header>
+      <header className="grid grid-cols-[auto_1fr_auto] items-center border-b border-[#ddd] bg-white px-5 max-md:px-3"><Brand /><nav className="flex items-center justify-center gap-1 max-md:hidden"><button className="rounded-lg px-3 py-2 text-[11px] text-[#555]">53%</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="compare" size={17} /> Compare</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="download" size={17} /> Download</button><button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] text-[#444] hover:bg-[#f4f4f4]"><Icon name="share" size={17} /> Share</button><button onClick={changeRoom} className="ml-2 flex items-center gap-2 rounded-full border border-[#ef4444] px-4 py-2 text-[11px] font-semibold text-[#ef4444]"><Icon name="plus" size={16} /> New room</button></nav><button className="justify-self-end rounded-full bg-[#f1f1f1] px-4 py-2 text-[10px] text-[#666]">Exit</button></header>
 
       <main className="grid min-h-0 grid-cols-[58px_310px_minmax(0,1fr)] max-lg:grid-cols-[58px_260px_minmax(0,1fr)] max-md:grid-cols-[52px_minmax(0,1fr)]">
         <aside className="z-20 flex min-h-0 flex-col items-center bg-[#242424]"><ActivityButton active={panel === 'points'} icon="points" label="Surface points" onClick={() => setPanel('points')} /><ActivityButton active={panel === 'products'} icon="products" label={canUseProducts ? 'Products' : 'Add 4 points first'} disabled={!canUseProducts} onClick={() => { setPointMode(false); setPanel('products') }} /><div className="mt-auto w-full border-t border-white/10"><ActivityButton icon="adjust" label="Settings" /></div></aside>
