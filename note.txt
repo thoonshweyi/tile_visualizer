@@ -25,3 +25,970 @@ export default defineConfig({
 }
 
 export default App
+
+
+=> Apply Product Function Basic Version Explain
+ဒီ applyProduct() မှာ Tile ကို room image ပေါ် တိုက်ရိုက်ကပ်တာမဟုတ်ပါဘူး။
+
+အောက်ပါ transparent overlay ကို သီးခြားဖန်တီးတာပါ။
+Perspective ပြောင်းထားတဲ့ Tile
+        +
+Mask အတွင်းက နေရာပဲချန်
+        ↓
+Transparent Tile Overlay PNG
+        ↓
+Room image ပေါ်မှာ ထပ်ပြ
+အဓိကအားဖြင့် အပိုင်း ၄ ပိုင်းရှိပါတယ်။
+1. Tile pattern ဖန်တီးခြင်း
+2. Point ၄ ခုအတိုင်း perspective ပြောင်းခြင်း
+3. Mask နဲ့ Tile ကိုဖြတ်ခြင်း
+4. Transparent preview အဖြစ်သိမ်းခြင်း
+၁။ ဘယ် Area မှာ Tile ကပ်မလဲယူခြင်း
+const areaId = activeAreaId
+const points = areaId ? pointsByArea[areaId] || [] : []
+const maskSource = areaId ? maskStates[areaId]?.maskSource : ''
+ဒီနေရာမှာ—
+- areaId — လက်ရှိရွေးထားတဲ့ Area
+- points — Area အတွက် user ရွေးထားတဲ့ perspective point ၄ ခု
+- maskSource — AI Mask image
+ကိုယူပါတယ်။
+if (!areaId || points.length !== 4 || !maskSource) {
+  setApplyError(...)
+  return
+}
+အောက်ကတစ်ခုခု မရှိရင် Tile မကပ်ပါဘူး။
+- Selected Area
+- Point ၄ ခု
+- Mask image
+Tile pattern ဘယ်လိုဖန်တီးသလဲ
+၂။ Tile image နဲ့ Mask image ကို load လုပ်ခြင်း
+const [cv, tileImage, maskImage] = await Promise.all([
+  getOpenCv(),
+  loadImage(product.src),
+  loadImage(maskSource),
+])
+ရရှိလာတာက—
+cv        → OpenCV
+tileImage → User ရွေးထားတဲ့ Tile ပုံ
+maskImage → AI ကပြန်ပေးထားတဲ့ Mask ပုံ
+ဖြစ်ပါတယ်။
+၃။ Room image ရဲ့ original size ယူခြင်း
+const width = image.naturalWidth
+const height = image.naturalHeight
+ဥပမာ မူရင်း Room image က—
+1920 × 1080
+ဆိုရင် calculation အားလုံးကို 1920 × 1080 ပေါ်မှာလုပ်ပါတယ်။
+
+Browser မှာ CSS နဲ့ အကျဉ်းချုံ့ပြထားတဲ့ width ကို မသုံးပါဘူး။
+၄။ Point ၄ ခုကို မှန်ကန်တဲ့အစဉ်ပြန်စီခြင်း
+const [
+  topLeft,
+  topRight,
+  bottomRight,
+  bottomLeft,
+] = orderPoints(points)
+User က point ကို အစဉ်မလိုက်ဘဲရွေးခဲ့လည်း ဒီလိုပြန်စီပါတယ်။
+Top Left ─────────── Top Right
+    │                    │
+    │                    │
+Bottom Left ────── Bottom Right
+Perspective တွက်တဲ့အခါ point order မှန်ဖို့လိုပါတယ်။
+၅။ အဖြောင့် Tile pattern အရွယ်အစားတွက်ခြင်း
+const textureWidth = Math.max(
+  240,
+  Math.round(
+    (
+      distance(topLeft, topRight)
+      + distance(bottomLeft, bottomRight)
+    ) / 2
+  )
+)
+Width ကို—
+အပေါ် edge အလျား + အောက် edge အလျား
+─────────────────────────────────
+                 2
+နဲ့တွက်ပါတယ်။
+
+Height ကိုလည်း—
+const textureHeight = Math.max(
+  240,
+  Math.round(
+    (
+      distance(topLeft, bottomLeft)
+      + distance(topRight, bottomRight)
+    ) / 2
+  )
+)
+အဖြစ် ဘယ် edge နဲ့ ညာ edge ပျမ်းမျှယူပါတယ်။
+
+ဒီ textureWidth နဲ့ textureHeight က အဖြောင့် Tile pattern ခင်းဖို့ Temporary Canvas အရွယ်အစားပါ။
+
+Room image size မဟုတ်ပါဘူး။
+၆။ Temporary Canvas ဖန်တီးခြင်း
+const textureCanvas = document.createElement('canvas')
+
+textureCanvas.width = textureWidth
+textureCanvas.height = textureHeight
+
+const textureContext = textureCanvas.getContext('2d')
+ဒီ canvas ပေါ်မှာ အရင်ဆုံး Tile တွေကို အဖြောင့်ခင်းပါမယ်။
+┌─────────────────────────────────┐
+│                                 │
+│        textureCanvas            │
+│                                 │
+└─────────────────────────────────┘
+ဒီအချိန်ထိ ဘာ Tile မှ မရှိသေးပါဘူး။
+၇။ Tile တစ်ကွက်ရဲ့ အရွယ်အစားတွက်ခြင်း
+const tileSize = 120
+ဒါကြောင့် Tile တစ်ကွက်ရဲ့ canvas width ကို 120px သတ်မှတ်ထားပါတယ်။
+const tileRatio =
+  tileImage.naturalWidth / tileImage.naturalHeight
+ဒါက Tile image ရဲ့ aspect ratio ဖြစ်ပါတယ်။
+
+ဥပမာ Tile image က—
+naturalWidth  = 1200
+naturalHeight = 600
+ဆိုရင်—
+tileRatio = 1200 / 600
+          = 2
+ပြီးရင်—
+const cellWidth = tileSize
+const cellHeight = tileSize / tileRatio
+ဒါကြောင့်—
+cellWidth  = 120
+cellHeight = 120 / 2
+           = 60
+Tile တစ်ကွက်ရဲ့ အရွယ်အစားက—
+120 × 60 px
+ဖြစ်ပါတယ်။
+၈။ Grout အတွက် canvas background ဖြည့်ခြင်း
+const grout = 3
+
+textureContext.fillStyle = '#dedbd2'
+textureContext.fillRect(
+  0,
+  0,
+  textureWidth,
+  textureHeight
+)
+textureCanvas တစ်ခုလုံးကို grout color နဲ့ အရင်ဖြည့်ထားပါတယ်။
+textureCanvas တစ်ခုလုံး
+→ #dedbd2 grout color
+ပြီးမှ Tile ပုံတွေကို grout color ပေါ်မှာရေးမှာပါ။
+၉။ Tile image ကို အကြိမ်ကြိမ်ဆွဲခြင်း
+for (
+  let y = 0;
+  y < textureHeight;
+  y += cellHeight
+) {
+  for (
+    let x = 0;
+    x < textureWidth;
+    x += cellWidth
+  ) {
+Outer loop က အပေါ်ကနေ အောက်ကိုရွှေ့ပါတယ်။
+y = 0
+y = cellHeight
+y = cellHeight × 2
+y = cellHeight × 3
+...
+Inner loop က ဘယ်ကနေညာကို ရွှေ့ပါတယ်။
+x = 0
+x = cellWidth
+x = cellWidth × 2
+x = cellWidth × 3
+...
+ဒီ loop နှစ်ခုကြောင့် rows နဲ့ columns ရလာပါတယ်။
+┌──────┬──────┬──────┬──────┐
+│      │      │      │      │
+├──────┼──────┼──────┼──────┤
+│      │      │      │      │
+├──────┼──────┼──────┼──────┤
+│      │      │      │      │
+└──────┴──────┴──────┴──────┘
+၁၀။ Tile တစ်ကွက်စီကို draw လုပ်ခြင်း
+textureContext.drawImage(
+  tileImage,
+  x + grout,
+  y + grout,
+  cellWidth - grout * 2,
+  cellHeight - grout * 2,
+)
+drawImage() ရဲ့ parameters တွေက—
+drawImage(
+  ဘယ် image ကိုဆွဲမလဲ,
+  ဘယ် x မှာစမလဲ,
+  ဘယ် y မှာစမလဲ,
+  width ဘယ်လောက်ထားမလဲ,
+  height ဘယ်လောက်ထားမလဲ
+)
+ဖြစ်ပါတယ်။
+
+ဥပမာ—
+x = 0
+y = 0
+cellWidth = 120
+cellHeight = 60
+grout = 3
+ဆိုရင်—
+drawImage(
+  tileImage,
+  3,
+  3,
+  114,
+  54
+)
+ဖြစ်ပါတယ်။
+ဘာကြောင့် x + grout လုပ်သလဲ
+Tile ရဲ့ ဘယ်ဘက်မှာ 3px နေရာချန်ဖို့ပါ။
+| 3px grout | Tile
+ဘာကြောင့် cellWidth - grout * 2 လုပ်သလဲ
+ဘယ်နဲ့ညာ နှစ်ဖက်လုံးအတွက် grout နေရာချန်တာပါ။
+cell width = 120
+
+120 - (3 × 2)
+= 114
+ရလဒ်က—
+┌────────────────────┐
+│ grout              │
+│   ┌────────────┐   │
+│   │ Tile image │   │
+│   └────────────┘   │
+│              grout │
+└────────────────────┘
+Loop ပြီးသွားရင် textureCanvas က—
+┌────────┬────────┬────────┐
+│ Tile   │ Tile   │ Tile   │
+├────────┼────────┼────────┤
+│ Tile   │ Tile   │ Tile   │
+├────────┼────────┼────────┤
+│ Tile   │ Tile   │ Tile   │
+└────────┴────────┴────────┘
+ပုံစံဖြစ်သွားပါတယ်။
+
+ဒီအဆင့်မှာ Tile တွေက အဖြောင့်ပဲရှိသေးပါတယ်။
+Perspective ဘယ်လိုပြောင်းသလဲ
+၁၁။ Canvas ကို OpenCV Mat ပြောင်းခြင်း
+tileMat = cv.imread(textureCanvas)
+HTML Canvas ကို OpenCV အသုံးပြုနိုင်တဲ့ cv.Mat image အဖြစ်ပြောင်းပါတယ်။
+textureCanvas
+      ↓ cv.imread()
+tileMat
+၁၂။ Room size အရွယ် Transparent Mat ဖန်တီးခြင်း
+warpedMat = cv.Mat.zeros(
+  height,
+  width,
+  cv.CV_8UC4
+)
+ဥပမာ room image က 1920 × 1080 ဆိုရင်—
+warpedMat = 1920 × 1080 transparent image
+ဖြစ်ပါတယ်။
+
+CV_8UC4 က RGBA channel ၄ ခုပါဝင်တာဖြစ်လို့ transparent background ထားနိုင်ပါတယ်။
+၁၃။ Source rectangle ရဲ့ Point ၄ ခု
+sourcePoints = cv.matFromArray(
+  4,
+  1,
+  cv.CV_32FC2,
+  [
+    0, 0,
+    textureWidth - 1, 0,
+    textureWidth - 1, textureHeight - 1,
+    0, textureHeight - 1,
+  ]
+)
+ဒီ Point တွေက Tile pattern rectangle ရဲ့ ထောင့် ၄ ခုဖြစ်ပါတယ်။
+(0,0) ─────────────── (width,0)
+  │                        │
+  │     Tile Pattern       │
+  │                        │
+(0,height) ──────── (width,height)
+အစဉ်က—
+Top Left
+Top Right
+Bottom Right
+Bottom Left
+ဖြစ်ပါတယ်။
+၁၄။ Room ထဲက Destination Point ၄ ခု
+destinationPoints = cv.matFromArray(
+  4,
+  1,
+  cv.CV_32FC2,
+  [
+    topLeft.x, topLeft.y,
+    topRight.x, topRight.y,
+    bottomRight.x, bottomRight.y,
+    bottomLeft.x, bottomLeft.y,
+  ]
+)
+ဒါတွေက user ရွေးထားတဲ့ room image ပေါ်က Point တွေပါ။
+Source                         Destination
+
+┌──────────────┐                   ╱─────────┐
+│              │                  ╱          │
+│ Tile Pattern │       →         ╱           │
+│              │                └────────────┘
+└──────────────┘
+၁၅။ Perspective Matrix တွက်ခြင်း
+transform = cv.getPerspectiveTransform(
+  sourcePoints,
+  destinationPoints
+)
+OpenCV ကို—
+Source rectangle ထောင့် ၄ ခုကို Destination ထောင့် ၄ ခုဆီ ဘယ်လိုရွှေ့ပြီး ဘယ်လိုစောင်းရမလဲ
+
+ဆိုတာ တွက်ခိုင်းတာပါ။
+
+transform ထဲမှာ—
+- Scale
+- Skew
+- Rotation
+- Perspective depth
+- Position
+တို့ကို ကိုယ်စားပြုတဲ့ matrix ရှိပါတယ်။
+၁၆။ Tile pattern ကို Perspective Warp လုပ်ခြင်း
+cv.warpPerspective(
+  tileMat,
+  warpedMat,
+  transform,
+  new cv.Size(width, height),
+  cv.INTER_LINEAR,
+  cv.BORDER_CONSTANT,
+  new cv.Scalar(0, 0, 0, 0),
+)
+ဒီနေရာက တကယ် Tile ကို Point ၄ ခုအတိုင်း ကပ်တဲ့အဆင့်ပါ။
+Parameters
+tileMat
+အဖြောင့် Tile pattern ဖြစ်ပါတယ်။
+warpedMat
+Perspective ပြောင်းပြီးသား result ထည့်မယ့် image ဖြစ်ပါတယ်။
+transform
+Source ကနေ Destination ကိုပြောင်းမယ့် perspective matrix ဖြစ်ပါတယ်။
+new cv.Size(width, height)
+Output image ကို room image အရွယ်အစားထားတာပါ။
+cv.INTER_LINEAR
+စောင်းသွားတဲ့ pixels တွေကို ချောမွေ့အောင် interpolation လုပ်ပါတယ်။
+cv.BORDER_CONSTANT
+new cv.Scalar(0, 0, 0, 0)
+Tile မရှိတဲ့ကျန်နေရာတွေကို RGBA (0,0,0,0)၊ transparent ထားပါတယ်။
+
+Result က—
+Room image အရွယ် Transparent Image
++
+Point 4 ခုနေရာမှာ Perspective Tile
+ဖြစ်သွားပါတယ်။
+၁၇။ OpenCV result ကို Canvas ပေါ်ရေးခြင်း
+cv.imshow(canvas, warpedMat)
+warpedMat ကို HTML Canvas ပေါ်ရေးပါတယ်။
+
+ဒီအချိန်မှာ Canvas ပေါ်မှာ—
+Perspective အတိုင်းစောင်းထားတဲ့ Tile
+ရှိနေပါပြီ။
+
+ဒါပေမဲ့ Point ၄ ခုအတွင်းတစ်ခုလုံးမှာ Tile ရှိနေပြီး Mask နဲ့မဖြတ်ရသေးပါဘူး။
+Mask နဲ့ဘယ်လိုဖြတ်သလဲ
+၁၈။ Mask အတွက် Canvas တစ်ခုဖန်တီးခြင်း
+const maskCanvas = document.createElement('canvas')
+
+maskCanvas.width = width
+maskCanvas.height = height
+Mask canvas ကို Room image နဲ့ တစ်အရွယ်တည်းထားပါတယ်။
+
+ဒီအချက်က အရေးကြီးပါတယ်။
+Room image    = 1920 × 1080
+Warped tile   = 1920 × 1080
+Mask canvas   = 1920 × 1080
+သုံးခုလုံး size တူတာကြောင့် coordinate တိတိကျကျကိုက်ပါတယ်။
+၁၉။ AI Mask ကို Room size အတိုင်းရေးခြင်း
+maskContext.drawImage(
+  maskImage,
+  0,
+  0,
+  width,
+  height
+)
+API ကပြန်လာတဲ့ Mask size ဘယ်လောက်ဖြစ်နေပါစေ canvas ပေါ်ရေးတဲ့အချိန်မှာ room image size အတိုင်းထားပါတယ်။
+၂၀။ Mask Pixel တစ်ခုချင်းစီစစ်ခြင်း
+const maskPixels =
+  maskContext.getImageData(0, 0, width, height)
+maskPixels.data ထဲမှာ RGBA value တွေရှိပါတယ်။
+Pixel 1 = R, G, B, A
+Pixel 2 = R, G, B, A
+Pixel 3 = R, G, B, A
+ဒါကြောင့် loop ကို 4 စီတိုးပါတယ်။
+for (
+  let index = 0;
+  index < maskPixels.data.length;
+  index += 4
+)
+၂၁။ Mask အတွင်း/အပြင် ဆုံးဖြတ်ခြင်း
+const isInsideMask =
+  maskPixels.data[index] > 127
+maskPixels.data[index] က Red channel ဖြစ်ပါတယ်။
+
+Mask pixel ရဲ့ Red value—
+- 127 ထက်ကြီးရင် mask အတွင်း
+- 127 သို့မဟုတ် အောက်ဆိုရင် mask အပြင်
+အဖြစ် သတ်မှတ်ပါတယ်။
+
+ဥပမာ—
+R = 255 → အတွင်း
+R = 200 → အတွင်း
+R = 100 → အပြင်
+R = 0   → အပြင်
+၂၂။ Mask ကို အဖြူ/Transparent ပြောင်းခြင်း
+maskPixels.data[index] = 255
+maskPixels.data[index + 1] = 255
+maskPixels.data[index + 2] = 255
+Mask အားလုံးရဲ့ RGB ကို အဖြူလုပ်ပါတယ်။
+
+Alpha ကို—
+maskPixels.data[index + 3] =
+  isInsideMask ? 255 : 0
+အဖြစ်သတ်မှတ်ပါတယ်။
+
+Mask အတွင်းဆိုရင်—
+RGBA = 255, 255, 255, 255
+       White + Opaque
+Mask အပြင်ဆိုရင်—
+RGBA = 255, 255, 255, 0
+       White + Transparent
+Result mask က—
+█████████  ← Alpha 255၊ ထားမယ့်နေရာ
+█████████
+          
+           ← Alpha 0၊ ဖျက်မယ့်နေရာ
+ဖြစ်ပါတယ်။
+
+ပြီးရင် Canvas ပေါ်ပြန်ထည့်ပါတယ်။
+maskContext.putImageData(
+  maskPixels,
+  0,
+  0
+)
+၂၃။ destination-in နဲ့ Tile ကို Mask ဖြတ်ခြင်း
+အရေးကြီးဆုံး Mask clipping အပိုင်းက ဒီသုံးကြောင်းပါ။
+const outputContext = canvas.getContext('2d')
+
+outputContext.globalCompositeOperation =
+  'destination-in'
+
+outputContext.drawImage(maskCanvas, 0, 0)
+ဒီနေရာမှာ—
+- destination = Canvas ပေါ်မှာရှိပြီးသား Perspective Tile
+- source = အခုထပ်ဆွဲမယ့် Mask
+ဖြစ်ပါတယ်။
+
+destination-in ရဲ့သဘောက—
+Existing Tile နဲ့ Mask နှစ်ခုလုံး ထပ်နေတဲ့ pixels ကိုပဲထားပါ။
+
+ဖြစ်ပါတယ်။
+ဥပမာ
+Perspective Tile က—
+TTTTTTTTTTTTTT
+TTTTTTTTTTTTTT
+TTTTTTTTTTTTTT
+TTTTTTTTTTTTTT
+Mask က—
+     █████
+   █████████
+   █████████
+      ███
+destination-in လုပ်ပြီးရင်—
+     TTTTT
+   TTTTTTTTT
+   TTTTTTTTT
+      TTT
+ပဲကျန်ပါတယ်။
+
+Mask အပြင်က Tile pixels အားလုံးရဲ့ Alpha က 0 ဖြစ်သွားပါတယ်။
+၂၄။ Composite mode ကို ပုံမှန်ပြန်ထားခြင်း
+outputContext.globalCompositeOperation =
+  'source-over'
+destination-in ကို မပြန်ပြောင်းဘူးဆိုရင် နောက်ဆွဲမယ့် image တွေလည်း ထူးဆန်းစွာ clip ဖြစ်နေနိုင်ပါတယ်။
+
+ဒါကြောင့် default mode ဖြစ်တဲ့ source-over ပြန်ထားပါတယ်။
+နောက်ဆုံး Tile က Room ပေါ်ဘယ်လိုရောက်သလဲ
+၂၅။ Transparent Tile Overlay ထုတ်ခြင်း
+const previewUrl =
+  canvas.toDataURL('image/png')
+Canvas ကို PNG Data URL ပြောင်းပါတယ်။
+
+ဒီ PNG ထဲမှာ—
+- Room image မပါဘူး
+- Mask အပြင်မှာ transparent
+- Mask အတွင်းမှာ perspective Tile
+ပဲရှိပါတယ်။
+
+ဥပမာ—
+┌──────────────────────────────┐
+│ Transparent                  │
+│        Perspective Tile      │
+│        Perspective Tile      │
+│ Transparent                  │
+└──────────────────────────────┘
+၂၆။ Area အလိုက် Preview သိမ်းခြင်း
+setAppliedPreviewsByArea((current) => ({
+  ...current,
+  [areaId]: {
+    productId: product.id,
+    url: previewUrl,
+  },
+}))
+Area တစ်ခုချင်းစီကို သီးသန့်သိမ်းပါတယ်။
+{
+  area01: {
+    productId: 'tile01',
+    url: 'data:image/png;base64,...'
+  },
+
+  area02: {
+    productId: 'tile02',
+    url: 'data:image/png;base64,...'
+  }
+}
+၂၇။ UI မှာ Original Room ပေါ် ထပ်ပြခြင်း
+Concept အရ React UI မှာ—
+<div className="room">
+  <img src={roomImage} />
+
+  <img src={area01Preview} />
+  <img src={area02Preview} />
+</div>
+ပုံစံနဲ့ထပ်ပြပါတယ်။
+
+Layer အစဉ်က—
+အပေါ်ဆုံး   Area 02 Tile Overlay
+           Area 01 Tile Overlay
+အောက်ဆုံး   Original Room Image
+Overlay တွေရဲ့ Mask အပြင်ဘက်က transparent ဖြစ်တာကြောင့် အောက်က Room image ကို မြင်နေရပါတယ်။
+အဓိကနားလည်ရမယ့်အချက်
+Point ၄ ခုရဲ့တာဝန်
+Tile ကို ဘယ်လိုစောင်းမလဲ
+Tile perspective ဘယ်လိုဖြစ်မလဲ
+ကိုဆုံးဖြတ်ပါတယ်။
+Mask ရဲ့တာဝန်
+Tile ကို ဘယ်နေရာမှာမြင်ရမလဲ
+ဘယ်နေရာမှာဖြတ်ပစ်ရမလဲ
+ကိုဆုံးဖြတ်ပါတယ်။
+
+ဒါကြောင့်—
+Point 4 ခု = Perspective
+Mask        = Visible boundary
+ဖြစ်ပါတယ်။
+
+အတိုဆုံးပြောရရင်—
+// 1. Tile အများကြီးခင်း
+textureContext.drawImage(...)
+
+// 2. Point 4 ခုအတိုင်းစောင်း
+cv.warpPerspective(...)
+
+// 3. Mask နဲ့အပြင်ပိုင်းဖြတ်
+globalCompositeOperation = 'destination-in'
+
+// 4. Transparent PNG ပြောင်း
+canvas.toDataURL('image/png')
+
+// 5. Room image ပေါ် overlay ထပ်
+setAppliedPreviewsByArea(...)
+
+
+
+
+
+=>အခု version မှာက Looping ပတ်ပြီ မခင်းဘူးလား ဘယ်လိုခင်းတာလဲ
+
+
+
+ဟုတ်ပါတယ်။ အခု version မှာ Tile ကို for loop နှစ်ထပ်ပတ်ပြီး တစ်ကွက်ချင်း drawImage() လုပ်တာ မဟုတ်တော့ပါဘူး။
+
+အခု version က Browser Canvas ရဲ့ createPattern(..., 'repeat') ကိုသုံးပြီး Tile ခင်းထားပါတယ်။
+Version အဟောင်း
+အရင် version မှာ—
+for (let y = 0; y < textureHeight; y += cellHeight) {
+  for (let x = 0; x < textureWidth; x += cellWidth) {
+    textureContext.drawImage(
+      tileImage,
+      x + grout,
+      y + grout,
+      cellWidth - grout * 2,
+      cellHeight - grout * 2,
+    )
+  }
+}
+ပုံစံနဲ့ JavaScript က Tile တစ်ကွက်ချင်းဆွဲပါတယ်။
+y = 0
+  x = 0      → Tile ဆွဲ
+  x = 120    → Tile ဆွဲ
+  x = 240    → Tile ဆွဲ
+
+y = 60
+  x = 0      → Tile ဆွဲ
+  x = 120    → Tile ဆွဲ
+  x = 240    → Tile ဆွဲ
+Tile အရွယ်အစားအရမ်းသေးရင် loop အကြိမ်ရေများပြီး performance ကျနိုင်ပါတယ်။
+အခု Version
+အခု version မှာ အဆင့်နှစ်ဆင့်နဲ့ ခင်းပါတယ်။
+Tile တစ်ကွက်ပါတဲ့ cellCanvas ဖန်တီး
+                    ↓
+createPattern(cellCanvas, 'repeat')
+                    ↓
+Canvas တစ်ခုလုံးကို fillRect တစ်ကြိမ်တည်းဖြည့်
+၁။ Tile တစ်ကွက်အရွယ်အစားတွက်ခြင်း
+const tileSize = 120 * adjustment.scale
+
+const tileRatio =
+  tileImage.naturalWidth / tileImage.naturalHeight
+
+const cellWidth = tileSize
+const cellHeight = tileSize / tileRatio
+Slider ကိုဖယ်ပြီး စဉ်းစားရင်—
+const tileSize = 120
+ဖြစ်ပါတယ်။
+
+ဥပမာ Tile ပုံက 1200 × 600 ဆိုရင်—
+tileRatio = 2
+
+cellWidth  = 120
+cellHeight = 60
+ဖြစ်ပါတယ်။
+၂။ Tile တစ်ကွက်အတွက် cellCanvas ဖန်တီးခြင်း
+const cellCanvas = document.createElement('canvas')
+
+cellCanvas.width =
+  Math.max(1, Math.round(cellWidth))
+
+cellCanvas.height =
+  Math.max(1, Math.round(cellHeight))
+ဥပမာအရ—
+cellCanvas = 120 × 60
+ဖြစ်ပါတယ်။
+
+ဒီ Canvas က Tile တစ်ကွက်တည်းအတွက်ပါ။
+┌─────────────────────┐
+│                     │
+│     cellCanvas      │
+│                     │
+└─────────────────────┘
+၃။ Cell ကို Grout color ဖြည့်ခြင်း
+cellContext.fillStyle = groutSetting.color
+
+cellContext.fillRect(
+  0,
+  0,
+  cellCanvas.width,
+  cellCanvas.height
+)
+Cell တစ်ခုလုံးကို grout color ဖြည့်ပါတယ်။
+┌─────────────────────┐
+│ Grout color         │
+│ Grout color         │
+│ Grout color         │
+└─────────────────────┘
+၄။ Grout နေရာချန်ပြီး Tile ဆွဲခြင်း
+cellContext.drawImage(
+  tileImage,
+  grout,
+  grout,
+  Math.max(1, cellCanvas.width - grout * 2),
+  Math.max(1, cellCanvas.height - grout * 2),
+)
+ဥပမာ—
+cellCanvas = 120 × 60
+grout = 3
+ဆိုရင် Tile ကို—
+x      = 3
+y      = 3
+width  = 120 - 6 = 114
+height = 60 - 6  = 54
+နဲ့ဆွဲပါတယ်။
+
+Result က—
+┌────────────────────────┐
+│  Grout                  │
+│   ┌────────────────┐   │
+│   │                │   │
+│   │   Tile image   │   │
+│   │                │   │
+│   └────────────────┘   │
+│                  Grout │
+└────────────────────────┘
+ဒီ cellCanvas ထဲမှာ Tile တစ်ကွက်နဲ့ ပတ်ပတ်လည် Grout ပါရှိပါတယ်။
+၅။ createPattern() နဲ့ Repeat Pattern ပြုလုပ်ခြင်း
+အဓိကနေရာက ဒီလိုင်းပါ။
+textureContext.fillStyle =
+  textureContext.createPattern(
+    cellCanvas,
+    'repeat'
+  )
+createPattern() ကို—
+createPattern(image, repetition)
+ပုံစံနဲ့သုံးပါတယ်။
+
+ဒီနေရာမှာ—
+image = cellCanvas
+repetition = 'repeat'
+ဖြစ်ပါတယ်။
+
+'repeat' ဆိုတာ—
+X direction မှာ repeat
+Y direction မှာ repeat
+နှစ်ခုလုံးလုပ်တာပါ။
+
+Concept အရ—
+Single cell
+
+┌────────┐
+│  Tile  │
+└────────┘
+
+              ↓ createPattern(..., 'repeat')
+
+┌────────┬────────┬────────┬────────┐
+│  Tile  │  Tile  │  Tile  │  Tile  │
+├────────┼────────┼────────┼────────┤
+│  Tile  │  Tile  │  Tile  │  Tile  │
+├────────┼────────┼────────┼────────┤
+│  Tile  │  Tile  │  Tile  │  Tile  │
+└────────┴────────┴────────┴────────┘
+ဖြစ်ပါတယ်။
+
+JavaScript ဘက်မှာ ကိုယ်တိုင် loop ပတ်စရာမလိုတော့ပါဘူး။ Browser Canvas engine က repeat လုပ်ပေးပါတယ်။
+၆။ Pattern ကို Canvas ပေါ် တစ်ကြိမ်တည်းဖြည့်ခြင်း
+textureContext.fillRect(
+  -patternPadding,
+  -patternPadding,
+  textureWidth + patternPadding * 2,
+  textureHeight + patternPadding * 2,
+)
+fillRect() တစ်ကြိမ်ပဲခေါ်ပါတယ်။
+
+ဒါပေမဲ့ fillStyle က solid color မဟုတ်ဘဲ repeating Tile pattern ဖြစ်နေပါပြီ။
+
+ဒါကြောင့်—
+textureContext.fillRect(...)
+လုပ်လိုက်တာနဲ့ သတ်မှတ်ထားတဲ့ rectangle တစ်ခုလုံး Tile pattern နဲ့ပြည့်သွားပါတယ်။
+patternPadding ကဘာကြောင့်လိုသလဲ
+const patternPadding = Math.ceil(
+  Math.hypot(textureWidth, textureHeight)
+)
+အခု version မှာ Tile pattern ကို Rotate လုပ်နိုင်ပါတယ်။
+
+Rectangle အရွယ်ပဲ pattern ခင်းထားရင် Rotate လုပ်တဲ့အခါ ထောင့်တွေမှာ အလွတ်ဖြစ်နိုင်ပါတယ်။
+Rotate မလုပ်ခင်
+
+┌─────────────┐
+│ Tile pattern│
+└─────────────┘
+
+Rotate လုပ်ပြီး
+
+       ╱────────╱
+      ╱ Pattern╱
+     ╱────────╱
+
+ထောင့်အချို့မှာ pattern မလုံလောက်နိုင်
+ဒါကြောင့် original texture canvas ထက် အပြင်ဘက်ထိ pattern ကို ကြိုခင်းထားပါတယ်။
+        Pattern အပိုခင်းထားသောနေရာ
+   ┌───────────────────────────┐
+   │                           │
+   │     ┌──────────────┐      │
+   │     │ Texture area │      │
+   │     └──────────────┘      │
+   │                           │
+   └───────────────────────────┘
+အဲဒါကြောင့် Rotate လုပ်ရင်လည်း အလွတ်ထောင့်တွေမဖြစ်တော့ပါဘူး။
+
+Slider/Rotate ကိုမစဉ်းစားရင် patternPadding က မလိုအပ်သလောက်ပါပဲ။ ဒါပေမဲ့ current version မှာ rotation support အတွက် ထည့်ထားတာပါ။
+Loop မရှိတော့ဘူးလား
+JavaScript code ဘက်မှာ for loop မရှိတော့ပါဘူး။
+
+ဒါပေမဲ့ Browser Canvas engine အတွင်းပိုင်းမှာတော့ Cell image ကို repeat လုပ်ပြီး pixels တွေဖြည့်ပေးနေဆဲပါ။
+
+ကွာခြားချက်က—
+အဟောင်း
+JavaScript က position တစ်ခုချင်းတွက်
+→ drawImage တစ်ကြိမ်ချင်းခေါ်
+အခု
+Tile cell တစ်ကွက်ဖန်တီး
+→ Browser ကို repeat pattern အဖြစ်ပေး
+→ fillRect တစ်ကြိမ်ခေါ်
+ဖြစ်ပါတယ်။
+
+အခု version ရဲ့ အဓိက code က—
+// Tile တစ်ကွက်ဖန်တီး
+cellContext.drawImage(tileImage, ...)
+
+// Tile တစ်ကွက်ကို repeating pattern ပြောင်း
+const pattern =
+  textureContext.createPattern(cellCanvas, 'repeat')
+
+// Pattern ကို area အပြည့်ဖြည့်
+textureContext.fillStyle = pattern
+textureContext.fillRect(...)
+ဖြစ်ပါတယ်။
+
+createPattern(..., 'repeat') ကို Tile ခင်းတဲ့ engine လို့ မှတ်ထားလို့ရပါတယ်။ fillRect() က အဲဒီ pattern ကို ဘယ်အကျယ်အဝန်းအထိ ခင်းမလဲဆိုတာ သတ်မှတ်တာပါ။
+
+
+
+=>textureContext အပြည့် repeat လုပ်ပြီးမှ fill ပြန်လုပ်တာက ဘယ်လိုဲ
+
+ဒီနေရာမှာ “အရင် repeat လုပ်ပြီး နောက်မှ fill လုပ်တာ” မဟုတ်ပါဘူး။
+
+တကယ်အလုပ်လုပ်ပုံက—
+createPattern() → Repeat လုပ်နိုင်တဲ့ paint/brush တစ်ခု ပြင်ဆင်
+fillRect()      → အဲဒီ paint နဲ့ သတ်မှတ်ထားတဲ့နေရာကို ဖြည့်
+ဖြစ်ပါတယ်။
+၁။ createPattern() က Canvas ပေါ်မဆွဲသေးပါဘူး
+const pattern = textureContext.createPattern(
+  cellCanvas,
+  'repeat'
+)
+ဒီလိုင်းက Tile တွေကို textureCanvas ပေါ်မှာ မဆွဲသေးပါဘူး။
+
+cellCanvas ကို ထပ်ခါထပ်ခါသုံးနိုင်မယ့် CanvasPattern object တစ်ခု ဖန်တီးတာပဲဖြစ်ပါတယ်။
+
+Concept အရ—
+cellCanvas
+
+┌────────┐
+│  Tile  │
+└────────┘
+
+        ↓ createPattern(..., 'repeat')
+
+pattern = “ဒီ Tile ကို X နဲ့ Y နှစ်ဖက်လုံးမှာ
+           အဆက်မပြတ်ထပ်သုံးမယ့် paint”
+Paint ပုံးတစ်ခု ပြင်ဆင်ထားသလို စဉ်းစားနိုင်ပါတယ်။
+၂။ Pattern ကို fillStyle အဖြစ်သတ်မှတ်ခြင်း
+textureContext.fillStyle = pattern
+ပုံမှန်ဆိုရင် fillStyle ကို အရောင်ပေးနိုင်ပါတယ်။
+textureContext.fillStyle = '#ff0000'
+ဒီလိုပေးထားရင် နောက် fillRect() က အနီရောင်ဖြည့်ပါမယ်။
+
+အခုတော့ အရောင်အစား pattern ပေးထားပါတယ်။
+textureContext.fillStyle = pattern
+ဒါကြောင့် နောက် fillRect() ခေါ်ရင် solid color မဖြည့်ဘဲ Tile တွေကို repeat လုပ်ပြီး ဖြည့်မှာပါ။
+၃။ fillRect() ခေါ်မှ တကယ် Tile ခင်းတာပါ
+textureContext.fillRect(
+  0,
+  0,
+  textureWidth,
+  textureHeight
+)
+ဒီလိုခေါ်လိုက်တဲ့အခါ textureContext က လက်ရှိ fillStyle ကိုကြည့်ပါတယ်။
+
+လက်ရှိ fillStyle က—
+pattern
+ဖြစ်နေတဲ့အတွက် rectangle တစ်ခုလုံးကို pattern နဲ့ဖြည့်ပါတယ်။
+
+ဥပမာ—
+cellCanvas = 100 × 50
+fillRect area = 300 × 150
+ဆိုရင် Browser က အတွင်းပိုင်းမှာ—
+X direction = 3 ကွက်
+Y direction = 3 ကွက်
+အလိုအလျောက်ထပ်ပါတယ်။
+┌────────┬────────┬────────┐
+│ Tile 1 │ Tile 2 │ Tile 3 │
+├────────┼────────┼────────┤
+│ Tile 4 │ Tile 5 │ Tile 6 │
+├────────┼────────┼────────┤
+│ Tile 7 │ Tile 8 │ Tile 9 │
+└────────┴────────┴────────┘
+JavaScript က Tile တစ်ကွက်ချင်း drawImage() ခေါ်စရာမလိုပါဘူး။
+လက်ရှိ Code ကို ခွဲကြည့်ရင်
+textureContext.fillStyle =
+  textureContext.createPattern(
+    cellCanvas,
+    'repeat'
+  )
+
+textureContext.fillRect(
+  -patternPadding,
+  -patternPadding,
+  textureWidth + patternPadding * 2,
+  textureHeight + patternPadding * 2,
+)
+ပထမစာကြောင်းက—
+Tile repeat paint ပြင်ဆင်
+ဒုတိယစာကြောင်းက—
+သတ်မှတ်ထားတဲ့ Rectangle ကို
+Tile repeat paint နဲ့ ဖြည့်
+တာဖြစ်ပါတယ်။
+createPattern() က ဘယ်လို Repeat လုပ်သလဲ
+'repeat' က direction နှစ်ခုလုံးကို ထပ်ပါတယ်။
+createPattern(cellCanvas, 'repeat')
+X direction → repeat
+Y direction → repeat
+တခြား option တွေလည်းရှိပါတယ်။
+'repeat'    // X နဲ့ Y နှစ်ခုလုံး
+'repeat-x'  // ဘယ်ကနေညာပဲ
+'repeat-y'  // အပေါ်ကနေအောက်ပဲ
+'no-repeat' // တစ်ကြိမ်ပဲ
+Tile ခင်းတာဖြစ်တဲ့အတွက် လက်ရှိ code မှာ 'repeat' သုံးထားတာပါ။
+fillRect() Area က Cell နဲ့ကွက်တိမဖြစ်ရင်
+ဥပမာ—
+cellWidth = 120
+fillRect width = 350
+ဆိုရင်—
+120 + 120 + 110
+ပုံစံနဲ့ နောက်ဆုံး Tile ကို ဖြတ်ပြီးဆွဲပေးပါတယ်။
+┌──────────┬──────────┬─────────
+│ Full Tile│ Full Tile│ Partial
+└──────────┴──────────┴─────────
+Browser က fillRect() boundary အပြင်ဘက်ကို မဆွဲပါဘူး။
+Current code မှာ fillRect() နှစ်ခါရှိရတဲ့အကြောင်း
+ပထမတစ်ခါက background color ဖြည့်တာပါ။
+textureContext.fillStyle = groutSetting.color
+textureContext.fillRect(
+  0,
+  0,
+  textureWidth,
+  textureHeight
+)
+ဒီအချိန်မှာ grout color ပဲဖြည့်ပါတယ်။
+
+ဒုတိယတစ်ခါက Tile pattern ဖြည့်တာပါ။
+textureContext.fillStyle =
+  textureContext.createPattern(cellCanvas, 'repeat')
+
+textureContext.fillRect(...)
+ဒါပေမဲ့ cellCanvas ကိုယ်တိုင်ထဲမှာ—
+Grout background
++
+Tile image
+ပါပြီးသားဖြစ်တဲ့အတွက် repeat လုပ်တဲ့အခါ Tile နဲ့ grout နှစ်ခုလုံးထပ်လာပါတယ်။
+cellCanvas တစ်ကွက်
+
+┌────────────────┐
+│ grout          │
+│  ┌──────────┐  │
+│  │   Tile   │  │
+│  └──────────┘  │
+│          grout │
+└────────────────┘
+
+              ↓ repeat
+
+┌────────────────┬────────────────┐
+│ grout + Tile   │ grout + Tile   │
+├────────────────┼────────────────┤
+│ grout + Tile   │ grout + Tile   │
+└────────────────┴────────────────┘
+အတိုချုပ်
+const pattern =
+  textureContext.createPattern(cellCanvas, 'repeat')
+ဒီနေရာမှာ Pattern ကို ပြင်ဆင်တာပဲရှိပြီး မဆွဲသေးပါဘူး။
+textureContext.fillStyle = pattern
+နောက်ဆွဲမယ့်အရာကို Pattern သုံးမယ်လို့ သတ်မှတ်ပါတယ်။
+textureContext.fillRect(...)
+ဒီအချိန်မှ Rectangle အပြည့် Tile တွေ repeat လုပ်ပြီး တကယ်ခင်းသွားတာပါ။
+
+အလွယ်မှတ်ရရင်—
+cellCanvas    = တံဆိပ်တုံး
+createPattern = တံဆိပ်တုံးကို ထပ်ခါထပ်ခါနှိပ်နိုင်တဲ့စနစ်
+fillStyle     = ဒီတံဆိပ်တုံးကို သုံးမယ်
+fillRect      = ဒီဧရိယာအပြည့် တံဆိပ်တုံးနှိပ်
