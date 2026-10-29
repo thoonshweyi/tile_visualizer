@@ -1,69 +1,85 @@
-import { createSlice,createAsyncThunk } from '@reduxjs/toolkit'
-import axios from "axios";
+import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
+import axios from 'axios'
 
-export const fetchproducts = createAsyncThunk('products/fetchproducts',async(obj,{rejectWithValue,fulfillWithValue})=>{
-	console.log(obj); // {id: 1}
-	// console.group(thunkAPI.getState())
+export const PRODUCTS_API_URL = import.meta.env.VITE_PRODUCTS_API_URL
+  || 'https://uatproductqr.sysdevpghc.net/api/products'
 
-	try{
-		const res = await axios.get(
-      'https://uatproductqr.sysdevpghc.net/api/products',
-      {
-          headers: {
-              'Accept': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-          }
-      }
-  );
-		// return res.data;
+export const PRODUCT_ASSET_ORIGIN = new URL(PRODUCTS_API_URL).origin
 
-		return fulfillWithValue(res.data);
-	}catch(err){
-		return rejectWithValue("Something went wrong, try again!");
-	}
-})
+export const fetchproducts = createAsyncThunk(
+  'products/fetchproducts',
+  async (categoryId, { rejectWithValue }) => {
+    try {
+      const response = await axios.get(PRODUCTS_API_URL, {
+        params: {
+          category_id: categoryId,
+        },
+        headers: {
+          Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      })
 
+      return response.data
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message
+          || error.message
+          || 'Products could not be loaded. Please try again.',
+      )
+    }
+  },
+  {
+    condition: (_, { getState }) => {
+      const { status } = getState().products
+      return status !== 'loading' && status !== 'succeeded'
+    },
+  },
+)
+
+const initialState = {
+  products: [],
+  pagination: null,
+  status: 'idle',
+  loading: false,
+  error: '',
+}
 
 export const productsSlice = createSlice({
   name: 'products',
-  initialState: {
-		products: [],
-        loading: false
-  },
-  reducers: {
-
-    // getproducts: (state)=>{
-    //   axios.get(`https://jsonplaceholder.typicode.com/products`)
-    //   .then(response=>{
-    //     console.log(response.data);
-    //     state.products = response.data
-    //   }).catch(err=>{
-    //     console.log(err);
-    //   })
-    // }
-  },
+  initialState,
+  reducers: {},
   extraReducers: (builder) => {
-    builder.addCase(fetchproducts.pending, (state) => {
-      
-		  console.log('Pending')
-      state.loading = true;
-    })
-	.addCase(fetchproducts.fulfilled, (state,action) => {
-      
-		console.log('Fulfilled');
-    state.loading = false;
+    builder
+      .addCase(fetchproducts.pending, (state) => {
+        state.status = 'loading'
+        state.loading = true
+        state.error = ''
+      })
+      .addCase(fetchproducts.fulfilled, (state, action) => {
+        const page = action.payload?.data
 
-		console.log(action.payload)
-		state.products = action.payload;
-    })
-	.addCase(fetchproducts.rejected, (state) => {
-      
-		console.log('Rejected');
-    })
+        state.products = Array.isArray(page?.data) ? page.data : []
+        state.pagination = page
+          ? {
+              currentPage: page.current_page,
+              lastPage: page.last_page,
+              perPage: page.per_page,
+              total: page.total,
+            }
+          : null
+        state.status = 'succeeded'
+        state.loading = false
+        state.error = ''
+      })
+      .addCase(fetchproducts.rejected, (state, action) => {
+        if (action.meta.condition) return
+
+        state.status = 'failed'
+        state.loading = false
+        state.error = action.payload || action.error.message || 'Products could not be loaded.'
+      })
   },
 })
-// Action creators are generated for each case reducer function
-// export const { setrole,getproducts } = productsSlice.actions // before thunk
-export const { setrole } = productsSlice.actions // after thunk
 
 export default productsSlice.reducer
