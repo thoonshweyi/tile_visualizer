@@ -1,11 +1,26 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 import { PRODUCTS } from './flowData'
 import Icon from './Icon'
 
+import {useSelector,useDispatch} from "react-redux";
+import {fetchproducts} from "./../../store/productsreducer.js";
+
 export default function ProductsPanel({ selectedProduct, applyingProduct, onSelectProduct, isApplying, activeArea, applyError }) {
+  const products = useSelector((state) => state.products);
+  console.log(products);
+
+
   const [query, setQuery] = useState('')
-  const visible = PRODUCTS.filter((product) => product.name.toLowerCase().includes(query.toLowerCase()))
+  const visible = products.products.filter((product) => product.name.toLowerCase().includes(query.toLowerCase()))
+
+
+    const dispatch = useDispatch();
+    useEffect(() => {
+      dispatch(fetchproducts())
+    }, [dispatch])
+  
+  
   return (
     <aside className="flex h-full min-h-0 flex-col border-r border-[#dfdfdf] bg-white">
       <div className="border-b border-[#e5e5e5] p-4"><p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#ef4444]">PRODUCTS</p><h2 className="mt-1 text-sm font-bold">Choose a product</h2><p className="mt-1 text-[8px] text-[#888]">Applying to {activeArea?.name}</p><label className="mt-3 flex h-9 items-center gap-2 rounded-lg border border-[#ddd] px-3 text-[#888] focus-within:border-[#ef4444]"><Icon name="search" size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products" className="min-w-0 flex-1 border-0 bg-transparent text-[10px] text-[#333] outline-none" /></label>{applyError && <p className="mt-2 rounded-lg bg-[#fff0ef] px-3 py-2 text-[8px] font-semibold leading-4 text-[#ef4444]">{applyError}</p>}</div>

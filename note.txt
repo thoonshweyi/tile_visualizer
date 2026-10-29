@@ -992,3 +992,237 @@ cellCanvas    = တံဆိပ်တုံး
 createPattern = တံဆိပ်တုံးကို ထပ်ခါထပ်ခါနှိပ်နိုင်တဲ့စနစ်
 fillStyle     = ဒီတံဆိပ်တုံးကို သုံးမယ်
 fillRect      = ဒီဧရိယာအပြည့် တံဆိပ်တုံးနှိပ်
+
+
+---------------------------------------------------------------------------------------------------------------
+code ထဲကိုသေချာလေ့လာပြီးပြော  ဘာကြောင့် tile image က  room ပေါ်မူတည်ပြီး  ကြီးလိုက်သေးလိုက်ဖြစ်နေတာလဲ
+
+
+
+
+
+
+
+Wednesday 4:57 PM
+
+
+
+
+
+
+Worked for 1m 10s
+
+
+
+Code ကို တကယ်စစ်ပြီးရတဲ့ အကြောင်းရင်းက ဒီတစ်ခုပဲ အဓိကပါ—
+Room ပုံတွေမှာ original resolution မတူပေမယ့် tile width ကို 120 natural pixels အသေထားတာကြောင့် ဖြစ်ပါတယ်။
+
+လက်ရှိ Room resolution အစစ်တွေက—
+Sunlit living room = 2560 × 1707
+Modern kitchen     =  940 × 564
+Living room က Kitchen ထက် original width 2.72 ဆလောက်ကြီးပါတယ်။
+ပြဿနာစတင်တဲ့ code
+Point ထည့်တဲ့အခါ screen percentage ကို Room natural resolution နဲ့မြှောက်ထားပါတယ်။
+
+[Workspace.jsx (line 210)](/home/pro1/Documents/code/react/tile_visualizer/src/components/room-flow/Workspace.jsx:210)
+const left =
+  (clientX - bounds.left) / bounds.width
+
+return {
+  x: Math.round(left * image.naturalWidth),
+  y: Math.round(top * image.naturalHeight),
+}
+ပုံရဲ့အလယ် 50% မှာ click လုပ်တယ်ဆိုပါစို့။
+
+Living room မှာ—
+x = 0.5 × 2560
+  = 1280
+Kitchen မှာ—
+x = 0.5 × 940
+  = 470
+Screen ပေါ်မှာ position တူပေမယ့် သိမ်းထားတဲ့ point distance က Room resolution အလိုက်ကွာသွားပါတယ်။
+Texture width ကို အဲဒီ point distance နဲ့တွက်တယ်
+[Workspace.jsx (line 448)](/home/pro1/Documents/code/react/tile_visualizer/src/components/room-flow/Workspace.jsx:448)
+const textureWidth = Math.max(
+  240,
+  Math.round(
+    (
+      distance(topLeft, topRight)
+      + distance(bottomLeft, bottomRight)
+    ) / 2
+  ),
+)
+ဒါကြောင့် Living room က natural resolution ကြီးလို့ textureWidth ကြီးပါတယ်။ Kitchen က resolution သေးလို့ textureWidth သေးပါတယ်။
+ဒါပေမဲ့ Tile width က Room နှစ်ခုလုံး 120 အသေ
+တကယ့်ပြဿနာဖြစ်စေတဲ့ line က—
+
+[Workspace.jsx (line 458)](/home/pro1/Documents/code/react/tile_visualizer/src/components/room-flow/Workspace.jsx:458)
+const tileSize = 120 * adjustment.scale
+const cellWidth = tileSize
+Default scale က 1 ဆိုတော့—
+cellWidth = 120 natural pixels
+Room နှစ်ခုလုံးမှာ အတူတူဖြစ်ပါတယ်။
+
+ဒါပေမဲ့ Room တစ်ပုံလုံးနဲ့ နှိုင်းရင်—
+Living room:
+120 / 2560 = 4.69%
+
+Kitchen:
+120 / 940 = 12.77%
+Kitchen မှာ tile တစ်ချပ်က Room width ရဲ့ 12.77% ရှိပါတယ်။ Living room မှာတော့ 4.69% ပဲရှိပါတယ်။
+
+ဒါကြောင့် Room နှစ်ပုံကို screen ပေါ်မှာ အကျယ်နီးပါးတူအောင် ပြတဲ့အခါ—
+Living room → Tile သေး၊ Tile အများကြီးဝင်
+Kitchen     → Tile ကြီး၊ Tile နည်းနည်းပဲဝင်
+ဖြစ်နေပါတယ်။
+
+နှစ်ခုကြား ခန့်မှန်းကွာခြားချက်က—
+2560 / 940 = 2.72 ဆ
+Kitchen tile က Living room tile ထက် screen ပေါ်မှာ 2.72 ဆလောက်ကြီးမြင်နိုင်ပါတယ်။
+Tile image resolution ကြောင့်လား
+မဟုတ်ပါဘူး။
+const tileRatio =
+  tileImage.naturalWidth / tileImage.naturalHeight
+ဒီ code က Tile ရဲ့ width/height အချိုးအတွက်ပဲ သုံးတာပါ။
+const cellWidth = 120
+const cellHeight = 120 / tileRatio
+tileImage.naturalWidth က tile width ကိုဆုံးဖြတ်တာမဟုတ်ပါဘူး။ cellWidth က 120 အသေပါ။
+
+Product data ထဲက—
+size: '600 × 1200 mm'
+ကိုလည်း tile ခင်းတဲ့ calculation မှာ လုံးဝမသုံးထားသေးပါဘူး။
+Preview ချုံ့တဲ့အခါ ဘာကြောင့် အချိုးမပြောင်းတာလဲ
+Pattern ခင်းပြီးတာနဲ့ PNG preview အဖြစ်ဖန်တီးပြီးသားပါ။ ပြီးတော့—
+
+[Workspace.jsx (line 746)](/home/pro1/Documents/code/react/tile_visualizer/src/components/room-flow/Workspace.jsx:746)
+<img className="h-full w-full object-contain" />
+နဲ့ Room နဲ့ Tile နှစ်ခုလုံးကို အတူချုံ့ပြပါတယ်။
+
+ဒါကြောင့် same Room ကို preview ချုံ့လိုက်ရင်—
+Room သေးသွားတယ်
+Tile လည်းသေးသွားတယ်
+Room နဲ့ Tile ကြား အချိုးက မပြောင်းဘူး
+Tile အရေအတွက်လည်း မပြောင်းဘူး
+Room ပြောင်းတဲ့အခါမှာပဲ original resolution မတူလို့ 120 natural pixels ရဲ့ အချိုးပြောင်းသွားတာပါ။
+Code flow အတိအကျ
+User click position
+        ↓
+left × room.naturalWidth
+        ↓
+Natural-coordinate points ရ
+        ↓
+Point distance နဲ့ textureWidth တွက်
+        ↓
+120px tile ကို repeat ခင်း
+        ↓
+Perspective warp
+        ↓
+PNG preview ထုတ်
+        ↓
+Room နဲ့အတူ CSS resize ပြ
+အကျဉ်းချုပ်ရင် အဓိကပြဿနာရှိတဲ့ ပေါင်းစပ်မှုက—
+x = left * image.naturalWidth
+နဲ့—
+const cellWidth = 120
+ပါ။ Room natural width က 2560 နဲ့ 940 လောက်အထိကွာနေချိန်မှာ tile ကို 120 natural pixels အသေထားတာကြောင့် Tile size က Room ပေါ်မူတည်ပြီး ကြီးလိုက်သေးလိုက်ဖြစ်နေတာပါ။
+
+  
+Wednesday 4:58 PM
+
+
+
+
+
+
+
+room resolution  ကြီးရင် texture width ကြီးမယ်။ room resolution သေးရင် texture width သေးမယ်။ အဲတာနဲ့ pattern repeat ခင်းလိုက်တဲ့အခါဘာကြောင့်ကွာသွားလဲ
+
+
+
+
+
+
+
+9:10 AM
+
+
+
+
+
+
+Worked for 4m 58s
+
+
+
+ဟုတ်ပါတယ်။ အဓိကနားလည်ရမယ့်အချက်က—
+createPattern(..., 'repeat') က texture canvas အရွယ်အစားအလိုက် Tile ကို ချဲ့/ချုံ့မပေးပါဘူး။ 120px အရွယ် Tile ကို texture canvas ပြည့်အောင် အကြိမ်ရေတိုးပြီး ထပ်ခင်းတာပါ။
+
+လက်ရှိ code မှာ—
+const tileSize = 120
+const cellWidth = 120
+ပြီးတော့—
+textureContext.createPattern(cellCanvas, 'repeat')
+ဆိုတော့ Tile တစ်ချပ်က texture canvas ပေါ်မှာ 120px အသေဖြစ်ပါတယ်။
+Room resolution ကြီးတဲ့အခါ
+ဥပမာ Point တွေကနေတွက်ရတဲ့—
+textureWidth = 960
+ဆိုပါစို့။
+
+Tile တစ်ချပ် 120px ဖြစ်တဲ့အတွက်—
+960 / 120 = 8 tiles
+Texture canvas ထဲမှာ Tile ၈ ချပ်ဝင်ပါတယ်။
+| Tile | Tile | Tile | Tile | Tile | Tile | Tile | Tile |
+Room resolution သေးတဲ့အခါ
+textureWidth = 360
+ဆိုပါစို့။
+360 / 120 = 3 tiles
+Tile ၃ ချပ်ပဲဝင်ပါတယ်။
+|     Tile     |     Tile     |     Tile     |
+Pattern repeat ကိုယ်တိုင်က tile size ပြောင်းတာမဟုတ်ပါဘူး။ Texture canvas ကြီးရင် Tile များများထပ်ခင်းပြီး texture canvas သေးရင် Tile နည်းနည်းပဲခင်းတာပါ။
+Screen ပေါ်တင်လိုက်တဲ့အခါ ဘာဖြစ်သလဲ
+Room နှစ်ပုံကို Screen ပေါ်မှာ အရွယ်တူအောင် ပြတယ်ဆိုပါစို့။ Selected wall က screen ပေါ်မှာ 480px စီရှိတယ်လို့ယူပါမယ်။
+
+Room resolution ကြီးတဲ့ပုံမှာ Tile ၈ ချပ်ပါလာရင်—
+480 / 8 = Tile တစ်ချပ် 60 screen px
+Room resolution သေးတဲ့ပုံမှာ Tile ၃ ချပ်ပါလာရင်—
+480 / 3 = Tile တစ်ချပ် 160 screen px
+ဒါကြောင့်—
+Resolution ကြီး
+→ textureWidth ကြီး
+→ 120px Tile များများဝင်
+→ Screen ပေါ် Tile တစ်ချပ်စီ သေးမြင်
+
+Resolution သေး
+→ textureWidth သေး
+→ 120px Tile နည်းနည်းဝင်
+→ Screen ပေါ် Tile တစ်ချပ်စီ ကြီးမြင်
+Code ထဲမှာ ဖြစ်နေတဲ့ flow
+// Room resolution အလိုက် textureWidth ကွာတယ်
+const textureWidth = averagePointDistance
+// Tile cell ကတော့ 120 အသေ
+const cellWidth = 120
+// 120px cell ကို textureWidth ပြည့်အောင် repeat လုပ်တယ်
+textureContext.fillStyle =
+  textureContext.createPattern(cellCanvas, 'repeat')
+
+textureContext.fillRect(
+  0,
+  0,
+  textureWidth,
+  textureHeight,
+)
+အဓိက formula က—
+numberOfTiles = textureWidth / 120
+ဖြစ်ပါတယ်။
+
+Pattern ကို repeat ခင်းတာက ကွာခြားမှုကိုဖန်တီးတာမဟုတ်ပါဘူး။ textureWidth က Room resolution အလိုက်ကွာနေပြီး cellWidth = 120 အသေထားတာကြောင့် repeat အကြိမ်ရေကွာသွားတာ ဖြစ်ပါတယ်။
+
+လိုချင်တာက Room resolution မတူလည်း selected area အတွင်း Tile အရေအတွက်တူဖို့ဆိုရင် 120 အသေမထားဘဲ—
+const desiredColumns = 6
+const cellWidth = textureWidth / desiredColumns
+လိုတွက်ရပါတယ်။
+
+ဒါဆို—
+textureWidth 960 → cellWidth 160 → 6 tiles
+textureWidth 360 → cellWidth 60  → 6 tiles
+ဖြစ်ပြီး Room resolution မတူလည်း Screen ပေါ်မှာ Tile အရွယ်အစားအချိုးတူသွားပါမယ်။

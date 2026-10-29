@@ -10,6 +10,8 @@ import GroutSettingsModal from './GroutSettingsModal'
 import PointsPanel from './PointsPanel'
 import ProductsPanel from './ProductsPanel'
 
+
+
 export default function Workspace({ room, onChangeRoom }) {
   const roomImageRef = useRef(null)
   const tileCanvasRef = useRef(null)
@@ -710,6 +712,7 @@ export default function Workspace({ room, onChangeRoom }) {
     aspectRatio: `${roomImageSize.width} / ${roomImageSize.height}`,
     width: `min(100%, calc((100dvh - 190px) * ${roomAspectRatio}))`,
   }
+
 
   return (
     <div className="grid h-screen grid-rows-[72px_minmax(0,1fr)] overflow-hidden border-t-[5px] border-[#333] bg-[#f1f3f4] font-sans text-[#242424]">
