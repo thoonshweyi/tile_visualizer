@@ -23,15 +23,28 @@ const absoluteProductImage = (path) => {
   return `${assetBase}/${assetPath}${productUrl.search}`
 }
 
-const mapProduct = (product) => ({
-  ...product,
-  name: (product.product_name || product.name || 'Unnamed product').trim(),
-  sku: String(product.product_code || product.id).trim(),
-  size: [product.brand, product.model].filter(Boolean).join(' • '),
-  badge: product.brand || '',
-  src: absoluteProductImage(product.thumbnail),
-  previewSrc: absoluteProductImage(product.thumbnail),
-})
+const mapProduct = (product) => {
+  const normalizedWidth = Number(product.normalized_size?.width_mm)
+  const normalizedHeight = Number(product.normalized_size?.height_mm)
+  const hasNormalizedSize = (
+    Number.isFinite(normalizedWidth)
+    && Number.isFinite(normalizedHeight)
+    && normalizedWidth > 0
+    && normalizedHeight > 0
+  )
+
+  return {
+    ...product,
+    name: (product.product_name || product.name || 'Unnamed product').trim(),
+    sku: String(product.product_code || product.id).trim(),
+    size: hasNormalizedSize
+      ? `${normalizedWidth} × ${normalizedHeight} mm`
+      : [product.brand, product.model].filter(Boolean).join(' • '),
+    badge: product.brand || '',
+    src: absoluteProductImage(product.thumbnail),
+    previewSrc: absoluteProductImage(product.thumbnail),
+  }
+}
 
 function ProductLoadingCards() {
   return (

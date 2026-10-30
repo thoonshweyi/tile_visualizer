@@ -447,22 +447,44 @@ export default function Workspace({ room, onChangeRoom }) {
       const width = image.naturalWidth
       const height = image.naturalHeight
       const [topLeft, topRight, bottomRight, bottomLeft] = orderPoints(points)
-      const textureWidth = Math.max(240, Math.round(
+      const surfaceWidth = Math.max(
+        1,
         (distance(topLeft, topRight) + distance(bottomLeft, bottomRight)) / 2,
-      ))
-      const textureHeight = Math.max(240, Math.round(
+      )
+      const surfaceHeight = Math.max(
+        1,
         (distance(topLeft, bottomLeft) + distance(topRight, bottomRight)) / 2,
-      ))
+      )
+
+      // Keep the source canvas large enough for clean interpolation without
+      // changing its aspect ratio. The tile cell and grout use the same scale,
+      // so warpPerspective cannot compress one axis independently.
+      const desiredWorkingScale = Math.max(1, 240 / Math.min(surfaceWidth, surfaceHeight))
+      const maximumWorkingScale = Math.max(1, 4096 / Math.max(surfaceWidth, surfaceHeight))
+      const workingScale = Math.min(desiredWorkingScale, maximumWorkingScale, 8)
+      const textureWidth = Math.max(1, Math.round(surfaceWidth * workingScale))
+      const textureHeight = Math.max(1, Math.round(surfaceHeight * workingScale))
       const textureCanvas = document.createElement('canvas')
       textureCanvas.width = textureWidth
       textureCanvas.height = textureHeight
       const textureContext = textureCanvas.getContext('2d')
-      const tileSize = 120 * adjustment.scale
-      const tileRatio = tileImage.naturalWidth / tileImage.naturalHeight
+      const normalizedWidth = Number(product.normalized_size?.width_mm)
+      const normalizedHeight = Number(product.normalized_size?.height_mm)
+      const hasNormalizedSize = (
+        Number.isFinite(normalizedWidth)
+        && Number.isFinite(normalizedHeight)
+        && normalizedWidth > 0
+        && normalizedHeight > 0
+      )
+      const tileRatio = hasNormalizedSize
+        ? normalizedWidth / normalizedHeight
+        : tileImage.naturalWidth / tileImage.naturalHeight
+      const tileSize = 120 * adjustment.scale * workingScale
       const cellWidth = tileSize
       const cellHeight = tileSize / tileRatio
-      const grout = Math.max(0, groutSetting.gap * adjustment.scale)
-      const rotation = (adjustment.rotation * Math.PI) / 180
+      const grout = Math.max(0, groutSetting.gap * adjustment.scale * workingScale)
+      const defaultRotation = Number(product.normalized_size?.default_rotation_deg) || 0
+      const rotation = ((defaultRotation + adjustment.rotation) * Math.PI) / 180
       const offsetX = (adjustment.offsetX / 100) * cellWidth
       const offsetY = (adjustment.offsetY / 100) * cellHeight
       const patternPadding = Math.ceil(Math.hypot(textureWidth, textureHeight))
