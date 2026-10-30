@@ -5,6 +5,8 @@ export const PRODUCTS_API_URL = import.meta.env.VITE_PRODUCTS_API_URL
   || 'https://uatproductqr.sysdevpghc.net/api/products'
 
 export const PRODUCT_ASSET_ORIGIN = new URL(PRODUCTS_API_URL).origin
+export const PRODUCT_ASSET_BASE_URL = import.meta.env.VITE_PRODUCT_ASSET_BASE_URL
+  || '/product-assets'
 
 export const fetchproducts = createAsyncThunk(
   'products/fetchproducts',

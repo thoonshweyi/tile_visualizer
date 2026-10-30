@@ -3,15 +3,24 @@ import { useDispatch, useSelector } from 'react-redux'
 
 import {
   fetchproducts,
+  PRODUCT_ASSET_BASE_URL,
   PRODUCT_ASSET_ORIGIN,
 } from '../../store/productsreducer.js'
 import Icon from './Icon'
 
 const absoluteProductImage = (path) => {
   if (!path) return ''
-  if (/^(data:|blob:|https?:\/\/)/i.test(path)) return path
+  if (/^(data:|blob:)/i.test(path)) return path
 
-  return `${PRODUCT_ASSET_ORIGIN}/${String(path).replace(/^\/+/, '')}`
+  const productUrl = new URL(path, `${PRODUCT_ASSET_ORIGIN}/`)
+  if (productUrl.origin !== PRODUCT_ASSET_ORIGIN) return productUrl.href
+
+  const assetPath = productUrl.pathname
+    .replace(/^\/assets\//, '')
+    .replace(/^\/+/, '')
+  const assetBase = PRODUCT_ASSET_BASE_URL.replace(/\/+$/, '')
+
+  return `${assetBase}/${assetPath}${productUrl.search}`
 }
 
 const mapProduct = (product) => ({
