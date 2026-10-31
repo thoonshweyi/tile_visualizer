@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 
 import {
@@ -66,11 +66,20 @@ function ProductLoadingCards() {
 
 function ProductsPanel({ selectedProduct, applyingProduct, onSelectProduct, isApplying, activeArea, applyError }) {
   const dispatch = useDispatch()
-  const { products, status, loading, error, pagination } = useSelector((state) => state.products)
+  const {
+    products,
+    status,
+    loading,
+    loadingMore,
+    error,
+    loadMoreError,
+    pagination,
+  } = useSelector((state) => state.products)
   const [query, setQuery] = useState('')
+  const categoryId = 7
 
   useEffect(() => {
-    if (status === 'idle') dispatch(fetchproducts(7))
+    if (status === 'idle') dispatch(fetchproducts({ categoryId, page: 1 }))
   }, [dispatch, status])
 
   const mappedProducts = useMemo(
@@ -89,7 +98,26 @@ function ProductsPanel({ selectedProduct, applyingProduct, onSelectProduct, isAp
     ))
   }, [mappedProducts, query])
 
-  const retryProducts = () => dispatch(fetchproducts(7))
+  const hasMoreProducts = Boolean(
+    pagination
+    && pagination.currentPage < pagination.lastPage,
+  )
+
+  const loadNextPage = useCallback(() => {
+    if (loading || !hasMoreProducts) return
+    dispatch(fetchproducts({
+      categoryId,
+      page: pagination.currentPage + 1,
+    }))
+  }, [dispatch, hasMoreProducts, loading, pagination])
+
+  const handleProductScroll = useCallback((event) => {
+    const panel = event.currentTarget
+    const distanceFromBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight
+    if (distanceFromBottom <= 160) loadNextPage()
+  }, [loadNextPage])
+
+  const retryProducts = () => dispatch(fetchproducts({ categoryId, page: 1 }))
 
   return (
     <aside className="flex h-full min-h-0 flex-col border-r border-[#dfdfdf] bg-white">
@@ -115,7 +143,7 @@ function ProductsPanel({ selectedProduct, applyingProduct, onSelectProduct, isAp
         <button className="rounded-full border border-[#ddd] px-3 py-1.5 text-[9px] text-[#666]">Floor</button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+      <div onScroll={handleProductScroll} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
         {loading && products.length === 0 && <ProductLoadingCards />}
 
         {status === 'failed' && products.length === 0 && (
@@ -158,6 +186,28 @@ function ProductsPanel({ selectedProduct, applyingProduct, onSelectProduct, isAp
             </button>
           )
         })}
+
+        {loadingMore && (
+          <div className="flex items-center justify-center gap-2 py-4 text-[9px] font-semibold text-[#777]" role="status">
+            <span className="size-4 animate-spin rounded-full border-2 border-[#ef4444]/25 border-t-[#ef4444]" />
+            Loading more products…
+          </div>
+        )}
+
+        {loadMoreError && !loadingMore && (
+          <div className="rounded-xl border border-[#f3ceca] bg-[#fff5f4] p-3 text-center">
+            <p className="text-[8px] font-semibold text-[#b93831]">{loadMoreError}</p>
+            <button type="button" onClick={loadNextPage} className="mt-2 rounded-full bg-[#242424] px-4 py-2 text-[8px] font-semibold text-white">Try next page again</button>
+          </div>
+        )}
+
+        {!loadingMore && !loadMoreError && products.length > 0 && (
+          <p className="py-2 text-center text-[8px] text-[#999]">
+            {hasMoreProducts
+              ? `Page ${pagination.currentPage} of ${pagination.lastPage}`
+              : `All ${pagination?.total ?? products.length} products loaded`}
+          </p>
+        )}
       </div>
     </aside>
   )
