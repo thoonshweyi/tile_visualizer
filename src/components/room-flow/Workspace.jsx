@@ -779,8 +779,8 @@ export default function Workspace({ room, onChangeRoom }) {
               {!compareMode && activePoints.length > 1 && (
                 <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full overflow-visible" viewBox={`0 0 ${roomImageSize.width} ${roomImageSize.height}`} preserveAspectRatio="none" aria-hidden="true">
                   {activePoints.length === 4
-                    ? <polygon points={activePoints.map(({ x, y }) => `${x},${y}`).join(' ')} fill="rgba(239,68,68,0.08)" stroke="#ef4444" strokeWidth="5" strokeDasharray="14 10" />
-                    : <polyline points={activePoints.map(({ x, y }) => `${x},${y}`).join(' ')} fill="none" stroke="#ef4444" strokeWidth="5" strokeDasharray="14 10" />}
+                    ? <polygon points={activePoints.map(({ x, y }) => `${x},${y}`).join(' ')} fill="rgba(239,68,68,0.08)" stroke="#ef4444" strokeWidth="3" strokeDasharray="10 8" vectorEffect="non-scaling-stroke" />
+                    : <polyline points={activePoints.map(({ x, y }) => `${x},${y}`).join(' ')} fill="none" stroke="#ef4444" strokeWidth="3" strokeDasharray="10 8" vectorEffect="non-scaling-stroke" />}
                 </svg>
               )}
 
