@@ -40,3 +40,9 @@ export const DEFAULT_GROUT_SETTING = {
   gap: 3,
   color: '#dedbd2',
 }
+
+export const SURFACE_TYPES = [
+  { value: 'Wall', label: 'Wall', icon: 'wall' },
+  { value: 'Floor', label: 'Floor', icon: 'grid' },
+  { value: 'Ceiling', label: 'Ceiling', icon: 'ceiling' },
+]

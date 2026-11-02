@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { normalizeAreaName } from './flowUtils'
-import { DEFAULT_TEXTURE_ADJUSTMENT } from './flowData'
+import { DEFAULT_TEXTURE_ADJUSTMENT, SURFACE_TYPES } from './flowData'
 import Icon from './Icon'
 
 function TextureSlider({ label, value, displayValue, min, max, step, onChange }) {
@@ -53,7 +53,7 @@ export default function PointsPanel({
   const [filter, setFilter] = useState('All')
   const [editingAreaId, setEditingAreaId] = useState(null)
   const [editName, setEditName] = useState('')
-  const [editType, setEditType] = useState('Wall')
+  const [editType, setEditType] = useState(SURFACE_TYPES[0].value)
   const visibleAreas = filter === 'All' ? areas : areas.filter((area) => area.type === filter)
   const areaLimitReached = areas.length >= 6
   const duplicateName = Boolean(draftName.trim()) && areas.some((area) => normalizeAreaName(area.name) === normalizeAreaName(draftName))
@@ -71,7 +71,7 @@ export default function PointsPanel({
   const cancelEditingArea = () => {
     setEditingAreaId(null)
     setEditName('')
-    setEditType('Wall')
+    setEditType(SURFACE_TYPES[0].value)
   }
 
   const saveEditedArea = () => {
@@ -104,7 +104,7 @@ export default function PointsPanel({
             {duplicateName && <p id="area-name-error" className="mt-1.5 text-[8px] font-semibold normal-case tracking-normal text-[#ef4444]">This area name is already in use.</p>}
 
             <label className="mt-3 block text-[8px] font-bold uppercase tracking-[0.08em] text-[#666]">Type
-              <select value={draftType} onChange={(event) => setDraftType(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-[#ddd] bg-white px-3 text-[10px] font-medium normal-case tracking-normal text-[#333] outline-none focus:border-[#ef4444]"><option value="Wall">Wall</option><option value="Floor">Floor</option></select>
+              <select value={draftType} onChange={(event) => setDraftType(event.target.value)} className="mt-1.5 h-9 w-full rounded-lg border border-[#ddd] bg-white px-3 text-[10px] font-medium normal-case tracking-normal text-[#333] outline-none focus:border-[#ef4444]">{SURFACE_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select>
             </label>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -115,9 +115,9 @@ export default function PointsPanel({
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-1 border-b border-[#e8e8e8] p-3">
-        {['All', 'Floor', 'Wall'].map((item) => (
-          <button key={item} type="button" onClick={() => setFilter(item)} className={`flex items-center justify-center gap-1 rounded-lg py-2 text-[10px] font-semibold ${filter === item ? 'bg-[#ef4444] text-white' : 'text-[#777] hover:bg-[#f5f5f5]'}`}>{item === 'Floor' && <Icon name="grid" size={14} />}{item === 'Wall' && <Icon name="wall" size={14} />}{item}</button>
+      <div className="flex gap-1 overflow-x-auto border-b border-[#e8e8e8] p-3">
+        {[{ value: 'All', label: 'All' }, ...SURFACE_TYPES].map((item) => (
+          <button key={item.value} type="button" onClick={() => setFilter(item.value)} className={`flex h-8 min-w-[70px] shrink-0 items-center justify-center gap-1 rounded-lg px-2 text-[9px] font-semibold ${filter === item.value ? 'bg-[#ef4444] text-white' : 'text-[#777] hover:bg-[#f5f5f5]'}`}>{item.icon && <Icon name={item.icon} size={13} />}{item.label}</button>
         ))}
       </div>
 
@@ -137,7 +137,7 @@ export default function PointsPanel({
                   {selectedProduct ? <><img src={selectedProduct.src} alt={selectedProduct.name} className="size-full object-cover" /><span className="absolute bottom-0.5 right-0.5 grid size-4 place-items-center rounded bg-[#242424]/85 text-[7px] font-bold text-white">{areas.indexOf(area) + 1}</span></> : <strong className="text-[11px]">{String(areas.indexOf(area) + 1).padStart(2, '0')}</strong>}
                 </button>
                 <div className="min-w-0 self-stretch py-0.5">
-                  <button type="button" onClick={() => onSelectArea(area)} className="block w-full min-w-0 text-left"><strong className="block truncate text-[11px]">{area.name}</strong><small className="mt-1 flex items-center gap-1 text-[8px] text-[#999]"><Icon name={area.type === 'Wall' ? 'wall' : 'grid'} size={11} /> {area.type} · {areaPoints.length}/4</small></button>
+                  <button type="button" onClick={() => onSelectArea(area)} className="block w-full min-w-0 text-left"><strong className="block truncate text-[11px]">{area.name}</strong><small className="mt-1 flex items-center gap-1 text-[8px] text-[#999]"><Icon name={SURFACE_TYPES.find((type) => type.value === area.type)?.icon || 'points'} size={11} /> {area.type} · {areaPoints.length}/4</small></button>
                   <div className="mt-1.5 flex items-center gap-0.5">
                     <button type="button" onClick={() => onDeleteArea(area.id)} className="grid size-6 place-items-center rounded text-[#888] transition hover:bg-white hover:text-[#ef4444]" aria-label={`Delete ${area.name}`} title="Delete area"><Icon name="trash" size={13} /></button>
                     <button type="button" onClick={() => startEditingArea(area)} className={`grid size-6 place-items-center rounded transition ${editingAreaId === area.id ? 'bg-white text-[#ef4444]' : 'text-[#888] hover:bg-white hover:text-[#ef4444]'}`} aria-label={`Edit ${area.name}`} title="Edit area"><Icon name="edit" size={13} /></button>
@@ -176,16 +176,14 @@ export default function PointsPanel({
                       </label>
                       {duplicateEditName && <p className="-mt-1.5 flex items-center gap-1 text-[8px] font-semibold text-[#ef4444]"><span className="grid size-3.5 place-items-center rounded-full bg-[#ef4444] text-[7px] text-white">!</span>This area name is already in use.</p>}
 
-                      <fieldset>
-                        <legend className="text-[7px] font-bold uppercase tracking-[0.1em] text-[#777]">Surface type</legend>
-                        <div className="mt-1.5 grid grid-cols-2 gap-1 rounded-lg bg-[#f3f3f3] p-1">
-                          {['Wall', 'Floor'].map((type) => (
-                            <button key={type} type="button" onClick={() => setEditType(type)} className={`flex h-8 items-center justify-center gap-1.5 rounded-md text-[8px] font-semibold transition ${editType === type ? 'bg-white text-[#ef4444] shadow-sm ring-1 ring-black/5' : 'text-[#777] hover:text-[#333]'}`} aria-pressed={editType === type}>
-                              <Icon name={type === 'Wall' ? 'wall' : 'grid'} size={12} /> {type}
-                            </button>
-                          ))}
-                        </div>
-                      </fieldset>
+                      <label className="block text-[7px] font-bold uppercase tracking-[0.1em] text-[#777]">Surface type
+                        <span className="mt-1.5 flex h-9 items-center rounded-lg border border-[#dedede] bg-[#fafafa] px-2.5 transition focus-within:border-[#ef4444] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#ef4444]/10">
+                          <Icon name={SURFACE_TYPES.find((type) => type.value === editType)?.icon || 'points'} size={13} />
+                          <select value={editType} onChange={(event) => setEditType(event.target.value)} className="ml-2 min-w-0 flex-1 border-0 bg-transparent text-[9px] font-semibold normal-case tracking-normal text-[#333] outline-none">
+                            {SURFACE_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+                          </select>
+                        </span>
+                      </label>
 
                       <div className="flex items-center justify-between gap-3 border-t border-[#eee] pt-3">
                         <small className="max-w-[112px] text-[7px] leading-3 text-[#aaa]">Mask, points and product will stay unchanged.</small>

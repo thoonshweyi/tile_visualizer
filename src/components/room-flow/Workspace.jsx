@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import ActivityButton from './ActivityButton'
 import Brand from './Brand'
 import CompareSlider from './CompareSlider'
-import { DEFAULT_GROUT_SETTING, DEFAULT_TEXTURE_ADJUSTMENT } from './flowData'
+import { DEFAULT_GROUT_SETTING, DEFAULT_TEXTURE_ADJUSTMENT, SURFACE_TYPES } from './flowData'
 import { colorizeMask, distance, getOpenCv, loadImage, normalizeAreaName, orderPoints } from './flowUtils'
 import Icon from './Icon'
 import GroutSettingsModal from './GroutSettingsModal'
@@ -32,7 +32,7 @@ export default function Workspace({ room, onChangeRoom }) {
   const [pointMode, setPointMode] = useState(false)
   const [pendingArea, setPendingArea] = useState(null)
   const [draftName, setDraftName] = useState('Area 01')
-  const [draftType, setDraftType] = useState('Wall')
+  const [draftType, setDraftType] = useState(SURFACE_TYPES[0].value)
   const [selectedProductsByArea, setSelectedProductsByArea] = useState({})
   const [appliedPreviewsByArea, setAppliedPreviewsByArea] = useState({})
   const [textureAdjustmentsByArea, setTextureAdjustmentsByArea] = useState({})
@@ -317,7 +317,7 @@ export default function Workspace({ room, onChangeRoom }) {
     setActiveAreaId(null)
     setPendingArea(null)
     setDraftName(`Area ${String(areas.length + 1).padStart(2, '0')}`)
-    setDraftType('Wall')
+    setDraftType(SURFACE_TYPES[0].value)
   }
 
   const cancelAddingArea = () => {

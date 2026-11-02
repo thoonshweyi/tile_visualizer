@@ -9,6 +9,7 @@ export default function Icon({ name, size = 19 }) {
     products: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
     layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5M3 16l9 5 9-5" /></>,
     wall: <><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M3 10h18M9 4v6m6 0v10M3 15h12" /></>,
+    ceiling: <><path d="M3 7h18M6 7l2.5 4h7L18 7" /><path d="M12 11v9M9 20h6" /></>,
     grid: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M12 4v16M4 12h16" /></>,
     adjust: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>,
     search: <><circle cx="11" cy="11" r="7" /><path d="m16 16 5 5" /></>,
