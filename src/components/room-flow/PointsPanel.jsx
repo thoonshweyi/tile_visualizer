@@ -32,6 +32,7 @@ export default function PointsPanel({
   textureAdjustmentsByArea,
   onSelectArea,
   onDeleteArea,
+  onUpdateArea,
   onOpenProducts,
   maskStates,
   pointMode,
@@ -50,9 +51,37 @@ export default function PointsPanel({
   onSaveArea,
 }) {
   const [filter, setFilter] = useState('All')
+  const [editingAreaId, setEditingAreaId] = useState(null)
+  const [editName, setEditName] = useState('')
+  const [editType, setEditType] = useState('Wall')
   const visibleAreas = filter === 'All' ? areas : areas.filter((area) => area.type === filter)
   const areaLimitReached = areas.length >= 6
   const duplicateName = Boolean(draftName.trim()) && areas.some((area) => normalizeAreaName(area.name) === normalizeAreaName(draftName))
+  const duplicateEditName = Boolean(editName.trim()) && areas.some((area) => (
+    area.id !== editingAreaId
+    && normalizeAreaName(area.name) === normalizeAreaName(editName)
+  ))
+
+  const startEditingArea = (area) => {
+    setEditingAreaId(area.id)
+    setEditName(area.name)
+    setEditType(area.type)
+  }
+
+  const cancelEditingArea = () => {
+    setEditingAreaId(null)
+    setEditName('')
+    setEditType('Wall')
+  }
+
+  const saveEditedArea = () => {
+    if (!editingAreaId || !editName.trim() || duplicateEditName) return
+    onUpdateArea(editingAreaId, {
+      name: editName.trim(),
+      type: editType,
+    })
+    cancelEditingArea()
+  }
 
   return (
     <aside className="flex h-full min-h-0 flex-col border-r border-[#dfdfdf] bg-white">
@@ -111,6 +140,7 @@ export default function PointsPanel({
                   <button type="button" onClick={() => onSelectArea(area)} className="block w-full min-w-0 text-left"><strong className="block truncate text-[11px]">{area.name}</strong><small className="mt-1 flex items-center gap-1 text-[8px] text-[#999]"><Icon name={area.type === 'Wall' ? 'wall' : 'grid'} size={11} /> {area.type} · {areaPoints.length}/4</small></button>
                   <div className="mt-1.5 flex items-center gap-0.5">
                     <button type="button" onClick={() => onDeleteArea(area.id)} className="grid size-6 place-items-center rounded text-[#888] transition hover:bg-white hover:text-[#ef4444]" aria-label={`Delete ${area.name}`} title="Delete area"><Icon name="trash" size={13} /></button>
+                    <button type="button" onClick={() => startEditingArea(area)} className={`grid size-6 place-items-center rounded transition ${editingAreaId === area.id ? 'bg-white text-[#ef4444]' : 'text-[#888] hover:bg-white hover:text-[#ef4444]'}`} aria-label={`Edit ${area.name}`} title="Edit area"><Icon name="edit" size={13} /></button>
                     <button type="button" disabled={!maskReady || areaPoints.length === 4} onClick={() => onStartPoints(area)} className={`grid size-6 place-items-center rounded transition disabled:cursor-not-allowed disabled:opacity-25 ${selected && pointMode ? 'bg-[#ef4444] text-white' : 'text-[#888] hover:bg-white hover:text-[#ef4444]'}`} aria-label={`Add points for ${area.name}`} title="Add points"><Icon name="points" size={13} /></button>
                     <button type="button" disabled={areaPoints.length === 0} onClick={() => onResetPoints(area)} className="grid size-6 place-items-center rounded text-[#888] transition hover:bg-white hover:text-[#ef4444] disabled:cursor-not-allowed disabled:opacity-25" aria-label={`Reset points for ${area.name}`} title="Reset points"><Icon name="reset" size={13} /></button>
                   </div>
@@ -120,6 +150,54 @@ export default function PointsPanel({
                 </div>
                 <button type="button" disabled={areaPoints.length !== 4} onClick={() => onOpenProducts(area)} className={`min-w-[82px] rounded-full px-3 py-2 text-[8px] font-semibold transition disabled:cursor-not-allowed disabled:bg-[#eee] disabled:text-[#aaa] ${selectedProduct ? 'bg-[#f0e5e4] text-[#777] hover:bg-[#eadad8]' : 'bg-black text-white hover:bg-[#222]'}`}>{selectedProduct ? 'Change product' : '+ Select product'}</button>
               </div>
+              {editingAreaId === area.id && (
+                <div className="border-t border-[#f1cfcc] bg-[#fff8f7] px-3 pb-3 pt-3">
+                  <form
+                    onSubmit={(event) => { event.preventDefault(); saveEditedArea() }}
+                    onKeyDown={(event) => { if (event.key === 'Escape') cancelEditingArea() }}
+                    className="overflow-hidden rounded-xl border border-[#f0d4d1] bg-white shadow-[0_8px_22px_rgba(63,31,28,0.08)]"
+                  >
+                    <div className="flex items-center gap-2.5 border-b border-[#f2e5e3] bg-[linear-gradient(135deg,#fff7f6,#fff)] px-3 py-2.5">
+                      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#ef4444] text-white shadow-[0_4px_10px_rgba(239,68,68,0.25)]"><Icon name="edit" size={13} /></span>
+                      <span className="min-w-0 flex-1">
+                        <strong className="block text-[10px] text-[#292929]">Edit surface area</strong>
+                        <small className="mt-0.5 block truncate text-[7px] text-[#999]">Update the display name and surface type.</small>
+                      </span>
+                      <button type="button" onClick={cancelEditingArea} className="grid size-6 place-items-center rounded-full text-[15px] leading-none text-[#999] transition hover:bg-[#f5e8e7] hover:text-[#ef4444]" aria-label="Close edit form" title="Close">×</button>
+                    </div>
+
+                    <div className="space-y-3 p-3">
+                      <label className="block text-[7px] font-bold uppercase tracking-[0.1em] text-[#777]">Area name
+                        <span className={`mt-1.5 flex h-9 items-center rounded-lg border bg-[#fafafa] px-2.5 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-[#ef4444]/10 ${duplicateEditName ? 'border-[#ef4444]' : 'border-[#dedede] focus-within:border-[#ef4444]'}`}>
+                          <Icon name="edit" size={12} />
+                          <input value={editName} onChange={(event) => setEditName(event.target.value)} maxLength={30} aria-invalid={duplicateEditName} autoFocus className="ml-2 min-w-0 flex-1 border-0 bg-transparent text-[9px] font-semibold normal-case tracking-normal text-[#333] outline-none" />
+                          <span className="ml-2 text-[7px] font-medium normal-case tracking-normal text-[#aaa]">{editName.length}/30</span>
+                        </span>
+                      </label>
+                      {duplicateEditName && <p className="-mt-1.5 flex items-center gap-1 text-[8px] font-semibold text-[#ef4444]"><span className="grid size-3.5 place-items-center rounded-full bg-[#ef4444] text-[7px] text-white">!</span>This area name is already in use.</p>}
+
+                      <fieldset>
+                        <legend className="text-[7px] font-bold uppercase tracking-[0.1em] text-[#777]">Surface type</legend>
+                        <div className="mt-1.5 grid grid-cols-2 gap-1 rounded-lg bg-[#f3f3f3] p-1">
+                          {['Wall', 'Floor'].map((type) => (
+                            <button key={type} type="button" onClick={() => setEditType(type)} className={`flex h-8 items-center justify-center gap-1.5 rounded-md text-[8px] font-semibold transition ${editType === type ? 'bg-white text-[#ef4444] shadow-sm ring-1 ring-black/5' : 'text-[#777] hover:text-[#333]'}`} aria-pressed={editType === type}>
+                              <Icon name={type === 'Wall' ? 'wall' : 'grid'} size={12} /> {type}
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+
+                      <div className="flex items-center justify-between gap-3 border-t border-[#eee] pt-3">
+                        <small className="max-w-[112px] text-[7px] leading-3 text-[#aaa]">Mask, points and product will stay unchanged.</small>
+                        <span className="flex shrink-0 gap-1.5">
+                          <button type="button" onClick={cancelEditingArea} className="h-8 rounded-lg border border-[#ddd] bg-white px-3 text-[8px] font-semibold text-[#666] transition hover:border-[#bbb] hover:bg-[#f7f7f7]">Cancel</button>
+                          <button type="submit" disabled={!editName.trim() || duplicateEditName} className="flex h-8 items-center gap-1.5 rounded-lg bg-[#ef4444] px-3.5 text-[8px] font-bold text-white shadow-[0_5px_12px_rgba(239,68,68,0.22)] transition hover:bg-[#dc3838] disabled:cursor-not-allowed disabled:bg-[#d8d8d8] disabled:shadow-none"><span>Save changes</span><span aria-hidden="true">✓</span></button>
+                        </span>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              )}
               {selected && selectedProduct && areaPoints.length === 4 && (
                 <div className="border-t border-[#f1cfcc] px-3 pb-3 pt-2.5">
                   <div className="mb-2.5 flex items-center justify-between">
