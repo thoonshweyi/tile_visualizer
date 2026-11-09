@@ -4,7 +4,7 @@ import ActivityButton from './ActivityButton'
 import Brand from './Brand'
 import CompareSlider from './CompareSlider'
 import { DEFAULT_GROUT_SETTING, DEFAULT_TEXTURE_ADJUSTMENT, SURFACE_TYPES } from './flowData'
-import { colorizeMask, distance, getOpenCv, loadImage, normalizeAreaName, orderPoints } from './flowUtils'
+import { colorizeMask, distance, getOpenCv, loadImage, mapEstimatedPoints, normalizeAreaName, orderPoints } from './flowUtils'
 import Icon from './Icon'
 import GroutSettingsModal from './GroutSettingsModal'
 import PointsPanel from './PointsPanel'
@@ -124,9 +124,12 @@ export default function Workspace({ room, onChangeRoom }) {
       const contentType = response.headers.get('content-type') || ''
       let overlayUrl = ''
       let maskSource = ''
+      let estimatedPoints = []
+      let estimationMeta = {}
 
       if (contentType.includes('application/json')) {
-        const data = await response.json()
+        const responseData = await response.json()
+        const data = responseData?.data?.estimated_points ? responseData.data : responseData
         const imageUrl = data.mask_url || data.image_url || data.url
         maskSource = data.mask
           ? (data.mask.startsWith('data:') ? data.mask : `data:image/png;base64,${data.mask}`)
@@ -140,6 +143,18 @@ export default function Workspace({ room, onChangeRoom }) {
         } catch (overlayError) {
           if (!imageUrl) throw overlayError
           overlayUrl = imageUrl
+        }
+
+        estimatedPoints = mapEstimatedPoints(
+          data.estimated_points,
+          { width: data.image_width, height: data.image_height },
+          { width: image.naturalWidth, height: image.naturalHeight },
+        )
+        estimationMeta = {
+          confidence: Number.isFinite(Number(data.confidence)) ? Number(data.confidence) : null,
+          score: Number.isFinite(Number(data.score)) ? Number(data.score) : null,
+          method: data.method || '',
+          detectedLineCount: Number.isFinite(Number(data.detected_line_count)) ? Number(data.detected_line_count) : null,
         }
       } else {
         const maskBlob = await response.blob()
@@ -155,8 +170,21 @@ export default function Workspace({ room, onChangeRoom }) {
 
       setMaskStates((current) => ({
         ...current,
-        [area.id]: { status: 'success', url: overlayUrl, maskSource, error: '', x, y },
+        [area.id]: {
+          status: 'success',
+          url: overlayUrl,
+          maskSource,
+          error: '',
+          x,
+          y,
+          estimatedPoints,
+          ...estimationMeta,
+        },
       }))
+      if (estimatedPoints.length === 4) {
+        setPointsByArea((current) => ({ ...current, [area.id]: estimatedPoints }))
+        setPointMode(false)
+      }
     } catch (requestError) {
       if (requestError.name === 'AbortError') {
         setMaskStates((current) => ({
@@ -243,11 +271,15 @@ export default function Workspace({ room, onChangeRoom }) {
 
   const startAddingPoints = (area) => {
     const areaId = area?.id || activeAreaId
-    if (!areaId || maskStates[areaId]?.status !== 'success' || (pointsByArea[areaId] || []).length === 4) return
+    if (!areaId || maskStates[areaId]?.status !== 'success') return
     clearWorkingCanvas()
     setActiveAreaId(areaId)
     setPanel('points')
-    setPointMode(true)
+    setPointMode((current) => (
+      activeAreaId === areaId && (pointsByArea[areaId] || []).length === 4
+        ? !current
+        : true
+    ))
   }
 
   const resetPoints = (area) => {
@@ -255,7 +287,11 @@ export default function Workspace({ room, onChangeRoom }) {
     if (!areaId) return
     clearWorkingCanvas()
     clearAreaProduct(areaId)
-    setPointsByArea((current) => ({ ...current, [areaId]: [] }))
+    const estimatedPoints = maskStates[areaId]?.estimatedPoints || []
+    setPointsByArea((current) => ({
+      ...current,
+      [areaId]: estimatedPoints.length === 4 ? estimatedPoints.map((point) => ({ ...point })) : [],
+    }))
     if (activeAreaId === areaId) setPointMode(false)
   }
 
@@ -363,7 +399,7 @@ export default function Workspace({ room, onChangeRoom }) {
 
   const handlePerspectivePointDown = (index, event) => {
     event.stopPropagation()
-    if (!activeAreaId) return
+    if (!activeAreaId || !pointMode) return
     clearWorkingCanvas()
     clearAreaProduct(activeAreaId)
     dragPointRef.current = { areaId: activeAreaId, index }
@@ -792,7 +828,7 @@ export default function Workspace({ room, onChangeRoom }) {
                 </svg>
               )}
 
-              {!compareMode && activePoints.map((point, index) => (
+              {!compareMode && pointMode && activePoints.map((point, index) => (
                 <button
                   key={`${activeAreaId}-${index}`}
                   type="button"

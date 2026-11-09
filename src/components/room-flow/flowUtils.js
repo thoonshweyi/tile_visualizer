@@ -55,6 +55,35 @@ export function orderPoints(points) {
   return [...clockwise.slice(topLeftIndex), ...clockwise.slice(0, topLeftIndex)]
 }
 
+export function mapEstimatedPoints(points, sourceSize, targetSize) {
+  if (!Array.isArray(points) || points.length !== 4) return []
+
+  const targetWidth = Number(targetSize?.width)
+  const targetHeight = Number(targetSize?.height)
+  const sourceWidth = Number(sourceSize?.width) || targetWidth
+  const sourceHeight = Number(sourceSize?.height) || targetHeight
+  if (![targetWidth, targetHeight, sourceWidth, sourceHeight].every((value) => Number.isFinite(value) && value > 0)) return []
+
+  const mappedPoints = points.map((point) => {
+    const sourceX = Number(point?.x)
+    const sourceY = Number(point?.y)
+    if (!Number.isFinite(sourceX) || !Number.isFinite(sourceY)) return null
+
+    const x = Math.max(0, Math.min(targetWidth - 1, (sourceX / sourceWidth) * targetWidth))
+    const y = Math.max(0, Math.min(targetHeight - 1, (sourceY / sourceHeight) * targetHeight))
+    return { x, y }
+  })
+
+  if (mappedPoints.some((point) => !point)) return []
+
+  return orderPoints(mappedPoints).map((point) => ({
+    x: Math.round(point.x),
+    y: Math.round(point.y),
+    left: (point.x / targetWidth) * 100,
+    top: (point.y / targetHeight) * 100,
+  }))
+}
+
 export const distance = (first, second) => Math.hypot(second.x - first.x, second.y - first.y)
 
 export function colorizeMask(source) {

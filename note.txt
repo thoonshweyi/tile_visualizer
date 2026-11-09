@@ -1226,3 +1226,89 @@ const cellWidth = textureWidth / desiredColumns
 textureWidth 960 → cellWidth 160 → 6 tiles
 textureWidth 360 → cellWidth 60  → 6 tiles
 ဖြစ်ပြီး Room resolution မတူလည်း Screen ပေါ်မှာ Tile အရွယ်အစားအချိုးတူသွားပါမယ်။
+
+
+
+=>Points ၄ခု ခန့်မှန်းတာကို Hybrid နည်းနဲ့သွားကြည့်မယ်။ 
+
+    Hybrid နည်းနဲ့သွားတာ အဆင်ပြေပါတယ်။ သုံးမယ့် signal နှစ်ခုက—
+    1. AI Mask — နံရံရဲ့ အကြမ်းဖျဉ်း shape
+    2. Image Lines — နံရံရဲ့ အစောင်း/perspective direction
+    ဖြစ်ပါတယ်။
+    Hybrid Flow
+    Room image + Mask
+            ↓
+    Mask ကနေ candidate points ၄ခု
+            ↓
+    Original image ကနေ straight lines ရှာ
+            ↓
+    Candidate points ကို အနီးဆုံး wall lines ဆီညှိ
+            ↓
+    Final estimated points ၄ခု
+            ↓
+    User လိုမှသာ adjust
+    အဆင့် 1 — Mask points
+    Binary mask
+    → Largest contour
+    → Convex hull
+    → approxPolyDP
+    → Candidate points ၄ခု
+    Furniture ကြောင့် mask ချိုင့်ဝင်နေရင် convexHull က ဖြည့်ပေးပါမယ်။
+    အဆင့် 2 — Image lines
+    Original image မှာ—
+    Canny
+    → HoughLinesP
+    → Straight lines
+    ရှာပါမယ်။
+
+    Mask အနားက line တွေကိုပဲရွေးပြီး—
+    - Top line
+    - Right line
+    - Bottom line
+    - Left line
+    အဖြစ်ခွဲပါမယ်။
+    အဆင့် 3 — Mask နဲ့ Line ပေါင်းမယ်
+    Mask ကထုတ်ထားတဲ့ candidate point က line နားမှာရှိရင် line intersection ဆီရွှေ့ပါမယ်။
+    Final Point 1 = Top line ∩ Left line
+    Final Point 2 = Top line ∩ Right line
+    Final Point 3 = Bottom line ∩ Right line
+    Final Point 4 = Bottom line ∩ Left line
+    Line က ယုံကြည်ရမှုနည်းရင် mask point ကိုဆက်သုံးပါမယ်။
+    Fallback order
+    1. Mask + detected lines
+    2. Mask convex hull points
+    3. approxPolyDP
+    4. minAreaRect
+    5. User adjustment
+    User Flow
+    Point ၄ ခုကို အစကနေရွေးခိုင်းမှာမဟုတ်ပါဘူး။
+    User Area click
+        ↓
+    Mask ထုတ်
+        ↓
+    Estimated points auto ပြ
+        ↓
+    Product ရွေးပြီး Tile apply
+    မမှန်မှသာ—
+    [Adjust perspective]
+    နှိပ်ပြီး ရှိပြီးသား points ကို drag ပြင်ပါမယ်။
+    Backend Response
+    {
+      "mask": "base64...",
+      "estimated_points": [
+        { "x": 75, "y": 170 },
+        { "x": 460, "y": 28 },
+        { "x": 463, "y": 540 },
+        { "x": 74, "y": 510 }
+      ],
+      "confidence": 0.84,
+      "method": "mask_and_lines"
+    }
+    ဘယ်မှာရေးသင့်လဲ
+    ဒီတွက်ချက်မှုကို Python/FastAPI backend မှာရေးတာပိုကောင်းပါတယ်။ Frontend က—
+    - estimated_points ကိုယူမယ်
+    - percentage coordinates ပြောင်းမယ်
+    - pointsByArea ထဲထည့်မယ်
+    - User adjustment ကိုင်မယ်
+    - Existing applyProduct() ကိုဆက်သုံးမယ်
+    လက်ရှိ workspace ထဲမှာ React frontend ပဲရှိပြီး FastAPI source မပါပါဘူး။ ဒါကြောင့် Hybrid point estimation အဓိက code ကို အခု repo ထဲမှာ မထည့်ရသေးပါဘူး။ Python mask API file ရှိတဲ့ backend workspace မှာ mask + estimated_points ပြန်ပေးအောင် အရင်ထည့်ပြီးမှ frontend flow ကိုချိတ်တာ အကောင်းဆုံးအဆင့်ဖြစ်ပါတယ်။

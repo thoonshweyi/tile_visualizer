@@ -128,7 +128,12 @@ export default function PointsPanel({
           const areaPoints = pointsByArea[area.id] || []
           const selectedProduct = selectedProductsByArea[area.id]
           const adjustment = textureAdjustmentsByArea[area.id] || DEFAULT_TEXTURE_ADJUSTMENT
-          const maskReady = maskStates[area.id]?.status === 'success'
+          const maskState = maskStates[area.id]
+          const maskReady = maskState?.status === 'success'
+          const hasEstimatedSurface = maskState?.estimatedPoints?.length === 4
+          const confidenceLabel = maskState?.confidence == null
+            ? ''
+            : `${Math.round(maskState.confidence * 100)}%`
 
           return (
             <div key={area.id} className={`border-b border-[#ededed] ${selected ? 'bg-[#fff0ef]' : 'bg-white hover:bg-[#fafafa]'}`}>
@@ -141,11 +146,14 @@ export default function PointsPanel({
                   <div className="mt-1.5 flex items-center gap-0.5">
                     <button type="button" onClick={() => onDeleteArea(area.id)} className="grid size-6 place-items-center rounded text-[#888] transition hover:bg-white hover:text-[#ef4444]" aria-label={`Delete ${area.name}`} title="Delete area"><Icon name="trash" size={13} /></button>
                     <button type="button" onClick={() => startEditingArea(area)} className={`grid size-6 place-items-center rounded transition ${editingAreaId === area.id ? 'bg-white text-[#ef4444]' : 'text-[#888] hover:bg-white hover:text-[#ef4444]'}`} aria-label={`Edit ${area.name}`} title="Edit area"><Icon name="edit" size={13} /></button>
-                    <button type="button" disabled={!maskReady || areaPoints.length === 4} onClick={() => onStartPoints(area)} className={`grid size-6 place-items-center rounded transition disabled:cursor-not-allowed disabled:opacity-25 ${selected && pointMode ? 'bg-[#ef4444] text-white' : 'text-[#888] hover:bg-white hover:text-[#ef4444]'}`} aria-label={`Add points for ${area.name}`} title="Add points"><Icon name="points" size={13} /></button>
+                    <button type="button" disabled={!maskReady} onClick={() => onStartPoints(area)} className={`grid size-6 place-items-center rounded transition disabled:cursor-not-allowed disabled:opacity-25 ${selected && pointMode ? 'bg-[#ef4444] text-white' : 'text-[#888] hover:bg-white hover:text-[#ef4444]'}`} aria-label={`${areaPoints.length === 4 ? 'Adjust surface' : 'Add points'} for ${area.name}`} title={areaPoints.length === 4 ? (selected && pointMode ? 'Finish adjusting surface' : 'Adjust surface') : 'Add points'}><Icon name="points" size={13} /></button>
                     <button type="button" disabled={areaPoints.length === 0} onClick={() => onResetPoints(area)} className="grid size-6 place-items-center rounded text-[#888] transition hover:bg-white hover:text-[#ef4444] disabled:cursor-not-allowed disabled:opacity-25" aria-label={`Reset points for ${area.name}`} title="Reset points"><Icon name="reset" size={13} /></button>
                   </div>
                   {maskStates[area.id]?.status === 'loading' && <small className="mt-1 block truncate text-[7px] font-semibold text-[#ef4444]">Generating mask…</small>}
-                  {maskReady && <small className="mt-1 block truncate text-[7px] font-semibold text-[#568638]">{selectedProduct ? `${selectedProduct.name} applied` : 'Mask ready'}</small>}
+                  {maskReady && <small className="mt-1 block truncate text-[7px] font-semibold text-[#568638]">{selectedProduct ? `${selectedProduct.name} applied` : hasEstimatedSurface ? `Surface detected${confidenceLabel ? ` · ${confidenceLabel}` : ''}` : 'Mask ready · add points'}</small>}
+                  {selected && hasEstimatedSurface && areaPoints.length === 4 && (
+                    <button type="button" onClick={() => onStartPoints(area)} className="mt-1 text-[7px] font-semibold text-[#ef4444] underline decoration-[#ef4444]/30 underline-offset-2 hover:decoration-[#ef4444]">{pointMode ? 'Finish adjustment' : 'Adjust surface'}</button>
+                  )}
                   {maskStates[area.id]?.status === 'error' && <small className="mt-1 block truncate text-[7px] font-semibold text-[#ef4444]" title={maskStates[area.id].error}>Mask failed</small>}
                 </div>
                 <button type="button" disabled={areaPoints.length !== 4} onClick={() => onOpenProducts(area)} className={`min-w-[82px] rounded-full px-3 py-2 text-[8px] font-semibold transition disabled:cursor-not-allowed disabled:bg-[#eee] disabled:text-[#aaa] ${selectedProduct ? 'bg-[#f0e5e4] text-[#777] hover:bg-[#eadad8]' : 'bg-black text-white hover:bg-[#222]'}`}>{selectedProduct ? 'Change product' : '+ Select product'}</button>
